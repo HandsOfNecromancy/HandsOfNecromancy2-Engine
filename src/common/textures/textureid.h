@@ -35,7 +35,7 @@ public:
 	void SetNull() { texnum = 0; }
 	bool operator ==(const FTextureID &other) const { return texnum == other.texnum; }
 	bool operator !=(const FTextureID &other) const { return texnum != other.texnum; }
-	FTextureID operator +(int offset) throw();
+	FTextureID operator +(int offset) const noexcept(true);
 	int GetIndex() const { return texnum; }	// Use this only if you absolutely need the index!
 	void SetIndex(int index) { texnum = index; }	// Use this only if you absolutely need the index!
 
@@ -45,7 +45,7 @@ public:
 	bool operator > (FTextureID other) const { return texnum > other.texnum; }
 
 protected:
-	FTextureID(int num) { texnum = num; }
+	constexpr FTextureID(int num) : texnum(num) { }
 private:
 	int texnum;
 };
@@ -53,13 +53,13 @@ private:
 class FNullTextureID : public FTextureID
 {
 public:
-	FNullTextureID() : FTextureID(0) {}
+	constexpr FNullTextureID() : FTextureID(0) {}
 };
 
 // This is for the script interface which needs to do casts from int to texture.
 class FSetTextureID : public FTextureID
 {
 public:
-	FSetTextureID(int v) : FTextureID(v) {}
+	constexpr FSetTextureID(int v) : FTextureID(v) {}
 };
 

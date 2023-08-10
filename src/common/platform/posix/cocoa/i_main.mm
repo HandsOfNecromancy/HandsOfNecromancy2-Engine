@@ -151,21 +151,24 @@ void I_DetectOS()
 	case 10:
 		switch (version.minorVersion)
 		{
-			case 12: name = "macOS Sierra";          break;
-			case 13: name = "macOS High Sierra";     break;
-			case 14: name = "macOS Mojave";          break;
-			case 15: name = "macOS Catalina";        break;
-			case 16: name = "macOS Big Sur";         break;
+			case 12: name = "Sierra";      break;
+			case 13: name = "High Sierra"; break;
+			case 14: name = "Mojave";      break;
+			case 15: name = "Catalina";    break;
+			case 16: name = "Big Sur";     break;
 		}
 		break;
 	case 11:
-		name = "macOS Big Sur";
+		name = "Big Sur";
 		break;
 	case 12:
-		name = "macOS Monterey";
+		name = "Monterey";
 		break;
 	case 13:
-		name = "macOS Ventura";
+		name = "Ventura";
+		break;
+	case 14:
+		name = "Sonoma";
 		break;
 	}
 
@@ -186,7 +189,7 @@ void I_DetectOS()
 		"Unknown";
 #endif
 
-	Printf("%s running %s %d.%d.%d (%s) %s\n", model, name,
+	Printf("%s running macOS %s %d.%d.%d (%s) %s\n", model, name,
 		   int(version.majorVersion), int(version.minorVersion), int(version.patchVersion),
 		   release, architecture);
 }
@@ -212,13 +215,6 @@ int DoMain(int argc, char** argv)
 	// Note that the LANG environment variable is overridden by LC_*
 	setenv("LC_NUMERIC", "C", 1);
 	setlocale(LC_ALL, "C");
-
-	// Set reasonable default values for video settings
-
-	const NSSize screenSize = [[NSScreen mainScreen] frame].size;
-	vid_defwidth  = static_cast<int>(screenSize.width);
-	vid_defheight = static_cast<int>(screenSize.height);
-	vid_vsync     = true;
 
 	Args = new FArgs(argc, argv);
 

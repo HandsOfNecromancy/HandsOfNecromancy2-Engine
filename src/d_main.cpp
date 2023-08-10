@@ -31,10 +31,6 @@
 #include <direct.h>
 #endif
 
-#ifdef HAVE_FPU_CONTROL
-#include <fpu_control.h>
-#endif
-
 #if defined(__unix__) || defined(__APPLE__)
 #include <unistd.h>
 #endif
@@ -158,6 +154,7 @@ void R_Shutdown();
 void I_ShutdownInput();
 void SetConsoleNotifyBuffer();
 void I_UpdateDiscordPresence(bool SendPresence, const char* curstatus, const char* appid, const char* steamappid);
+bool M_SetSpecialMenu(FName& menu, int param);	// game specific checks
 
 const FIWADInfo *D_FindIWAD(TArray<FString> &wadfiles, const char *iwad, const char *basewad);
 
@@ -176,6 +173,8 @@ void I_UpdateWindowTitle();
 void S_ParseMusInfo();
 void D_GrabCVarDefaults();
 void LoadHexFont(const char* filename);
+void InitBuildTiles();
+bool OkForLocalization(FTextureID texnum, const char* substitute);
 
 // PRIVATE FUNCTION PROTOTYPES ---------------------------------------------
 
@@ -187,8 +186,6 @@ EXTERN_CVAR (Float, turbo)
 EXTERN_CVAR (Bool, freelook)
 EXTERN_CVAR (Float, m_pitch)
 EXTERN_CVAR (Float, m_yaw)
-EXTERN_CVAR (Bool, invertmouse)
-EXTERN_CVAR (Bool, invertmousex)
 EXTERN_CVAR (Bool, lookstrafe)
 EXTERN_CVAR (Int, screenblocks)
 EXTERN_CVAR (Bool, sv_cheats)
@@ -196,6 +193,7 @@ EXTERN_CVAR (Bool, sv_unlimited_pickup)
 EXTERN_CVAR (Bool, r_drawplayersprites)
 EXTERN_CVAR (Bool, show_messages)
 EXTERN_CVAR(Bool, ticker)
+EXTERN_CVAR(Bool, vid_fps)
 
 extern bool setmodeneeded;
 extern bool demorecording;
@@ -209,6 +207,8 @@ static const char* iwad_folders[] = { "flats/", "textures/", "hires/", "sprites/
 static const char* iwad_reserved[] = { "mapinfo", "zmapinfo", "umapinfo", "gameinfo", "sndinfo", "sndseq", "sbarinfo", "menudef", "gldefs", "animdefs", "decorate", "zscript", "iwadinfo", "maps/" };
 
 
+EXTERN_CVAR(Float, net_timescale)
+
 CUSTOM_CVAR(Float, i_timescale, 1.0f, CVAR_NOINITCALL | CVAR_VIRTUAL)
 {
 	if (netgame)
@@ -218,6 +218,13 @@ CUSTOM_CVAR(Float, i_timescale, 1.0f, CVAR_NOINITCALL | CVAR_VIRTUAL)
 	}
 	else if (self >= 0.05f)
 	{
+		if (net_timescale != 1.0)
+		{
+			self.DisableCallbacks();
+			net_timescale = 1.0;
+			self.EnableCallbacks();
+		}
+
 		I_FreezeTime(true);
 		TimeScale = self;
 		I_FreezeTime(false);
@@ -228,9 +235,32 @@ CUSTOM_CVAR(Float, i_timescale, 1.0f, CVAR_NOINITCALL | CVAR_VIRTUAL)
 	}
 }
 
+CUSTOM_CVAR(Float, net_timescale, 1.0, CVAR_NOINITCALL | CVAR_VIRTUAL | CVAR_SERVERINFO | CVAR_CHEAT)
+{
+	if (self >= 0.1f && self <= 10.0)
+	{
+		if (i_timescale != 1.0)
+		{
+			self.DisableCallbacks();
+			i_timescale = 1.0;
+			self.EnableCallbacks();
+		}
+
+		I_FreezeTime(true);
+		TimeScale = self;
+		I_FreezeTime(false);
+	}
+	else
+	{
+		self = 1.0f;
+		Printf("Time scale must be between 0.1 and 10.0!\n");
+	}
+}
+
 
 // PUBLIC DATA DEFINITIONS -------------------------------------------------
 
+#ifndef NO_SWRENDERER
 CUSTOM_CVAR(Int, vid_rendermode, 4, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 {
 	if (self < 0 || self > 4)
@@ -251,6 +281,7 @@ CUSTOM_CVAR(Int, vid_rendermode, 4, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOIN
 
 	// No further checks needed. All this changes now is which scene drawer the render backend calls.
 }
+#endif
 
 CUSTOM_CVAR (Int, fraglimit, 0, CVAR_SERVERINFO)
 {
@@ -298,7 +329,6 @@ CVAR(Bool, autoloadbrightmaps, false, CVAR_ARCHIVE | CVAR_NOINITCALL | CVAR_GLOB
 CVAR(Bool, autoloadlights, false, CVAR_ARCHIVE | CVAR_NOINITCALL | CVAR_GLOBALCONFIG)
 CVAR(Bool, autoloadwidescreen, true, CVAR_ARCHIVE | CVAR_NOINITCALL | CVAR_GLOBALCONFIG)
 CVAR(Bool, r_debug_disable_vis_filter, false, 0)
-CVAR(Bool, vid_fps, false, 0)
 CVAR(Int, vid_showpalette, 0, 0)
 CUSTOM_CVAR (Bool, i_discordrpc, true, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
 {
@@ -328,10 +358,9 @@ FTextureID Advisory;
 FTextureID Page;
 const char *Subtitle;
 bool nospriterename;
-FStartupInfo GameStartupInfo;
 FString lastIWAD;
 int restart = 0;
-bool AppActive = true;
+extern bool AppActive;
 bool playedtitlemusic;
 
 FStartScreen* StartScreen;
@@ -564,11 +593,24 @@ CVAR (Flag, sv_respawnsuper,		dmflags2, DF2_RESPAWN_SUPER);
 CVAR (Flag, sv_nothingspawn,		dmflags2, DF2_NO_COOP_THING_SPAWN);
 CVAR (Flag, sv_alwaysspawnmulti,	dmflags2, DF2_ALWAYS_SPAWN_MULTI);
 CVAR (Flag, sv_novertspread,		dmflags2, DF2_NOVERTSPREAD);
+CVAR (Flag, sv_noextraammo,			dmflags2, DF2_NO_EXTRA_AMMO);
 
 CVAR (Int, dmflagsr, 0, CVAR_SERVERINFO)
 CVAR (Flag, sv_alwaysallowautomap,	dmflagsr, DFR_YES_AUTOMAP);
 CVAR (Flag, sv_alwaysallowsaves,	dmflagsr, DFR_YES_USERSAVE);
 
+
+//==========================================================================
+//
+// CVAR dmflags3
+//
+//==========================================================================
+
+CUSTOM_CVAR(Int, dmflags3, 0, CVAR_SERVERINFO | CVAR_NOINITCALL)
+{
+}
+
+CVAR(Flag, sv_noplayerclip, dmflags3, DF3_NO_PLAYER_CLIP);
 
 //==========================================================================
 //
@@ -618,7 +660,7 @@ CUSTOM_CVAR(Int, compatmode, 0, CVAR_ARCHIVE|CVAR_NOINITCALL)
 			COMPATF_TRACE | COMPATF_MISSILECLIP | COMPATF_SOUNDTARGET | COMPATF_NO_PASSMOBJ | COMPATF_LIMITPAIN |
 			COMPATF_DEHHEALTH | COMPATF_INVISIBILITY | COMPATF_CROSSDROPOFF | COMPATF_VILEGHOSTS | COMPATF_HITSCAN |
 			COMPATF_WALLRUN | COMPATF_NOTOSSDROPS | COMPATF_LIGHT | COMPATF_MASKEDMIDTEX;
-		w = COMPATF2_BADANGLES | COMPATF2_FLOORMOVE | COMPATF2_POINTONLINE | COMPATF2_EXPLODE2 | COMPATF2_NOMBF21;
+		w = COMPATF2_BADANGLES | COMPATF2_FLOORMOVE | COMPATF2_POINTONLINE | COMPATF2_EXPLODE2 | COMPATF2_NOMBF21 | COMPATF2_VOODOO_ZOMBIES;
 		break;
 
 	case 3: // Boom compat mode
@@ -899,14 +941,11 @@ void D_Display ()
     auto &vp = r_viewpoint;
 	if (viewactive)
 	{
-		DAngle fov = 90.f;
+		DAngle fov = DAngle::fromDeg(90.);
 		AActor *cam = players[consoleplayer].camera;
 		if (cam)
-		{
-			if (cam->player)
-				fov = cam->player->FOV;
-			else fov = cam->CameraFOV;
-		}
+			fov = DAngle::fromDeg(cam->GetFOV(I_GetTimeFrac()));
+
 		R_SetFOV(vp, fov);
 	}
 
@@ -934,9 +973,9 @@ void D_Display ()
 	}
 
 	// [RH] Allow temporarily disabling wipes
-	if (NoWipe)
+	if (NoWipe || !CanWipe())
 	{
-		NoWipe--;
+		if (NoWipe > 0) NoWipe--;
 		wipestart = nullptr;
 		wipegamestate = gamestate;
 	}
@@ -1182,7 +1221,7 @@ void D_DoomLoop ()
 	Subtitle = nullptr;
 	Advisory.SetInvalid();
 
-	vid_cursor.Callback();
+	vid_cursor->Callback();
 
 	for (;;)
 	{
@@ -1220,6 +1259,7 @@ void D_DoomLoop ()
 			}
 			// Update display, next frame, with current state.
 			I_StartTic ();
+			D_ProcessEvents();
 			D_Display ();
 			S_UpdateMusic();
 			if (wantToRestart)
@@ -1232,14 +1272,14 @@ void D_DoomLoop ()
 		{
 			if (error.GetMessage ())
 			{
-				Printf (PRINT_BOLD, "\n%s\n", error.GetMessage());
+				Printf (PRINT_NONOTIFY | PRINT_BOLD, "\n%s\n", error.GetMessage());
 			}
 			D_ErrorCleanup ();
 		}
 		catch (CVMAbortException &error)
 		{
 			error.MaybePrintMessage();
-			Printf("%s", error.stacktrace.GetChars());
+			Printf(PRINT_NONOTIFY | PRINT_BOLD, "%s", error.stacktrace.GetChars());
 			D_ErrorCleanup();
 		}
 	}
@@ -1586,6 +1626,8 @@ void ParseCVarInfo()
 			ECVarType cvartype = CVAR_Dummy;
 			int cvarflags = CVAR_MOD|CVAR_ARCHIVE;
 			FBaseCVar *cvar;
+			bool customCVar = false;
+			FName customCVarClassName;
 
 			// Check for flag tokens.
 			while (sc.TokenType == TK_Identifier)
@@ -1613,6 +1655,14 @@ void ParseCVarInfo()
 				else if (stricmp(sc.String, "nosave") == 0)
 				{
 					cvarflags |= CVAR_CONFIG_ONLY;
+				}
+				else if (stricmp(sc.String, "handlerClass") == 0)
+				{
+					sc.MustGetStringName("(");
+					sc.MustGetString();
+					customCVar = true;
+					customCVarClassName = sc.String;
+					sc.MustGetStringName(")");
 				}
 				else
 				{
@@ -1696,7 +1746,7 @@ void ParseCVarInfo()
 				}
 			}
 			// Now create the cvar.
-			cvar = C_CreateCVar(cvarname, cvartype, cvarflags);
+			cvar = customCVar ? C_CreateZSCustomCVar(cvarname, cvartype, cvarflags, customCVarClassName) : C_CreateCVar(cvarname, cvartype, cvarflags);
 			if (cvardefault != NULL)
 			{
 				UCVarValue val;
@@ -1775,6 +1825,7 @@ static FString ParseGameInfo(TArray<FString> &pwads, const char *fn, const char 
 	FScanner sc;
 	FString iwad;
 	int pos = 0;
+	bool isDir;
 
 	const char *lastSlash = strrchr (fn, '/');
 
@@ -1808,7 +1859,7 @@ static FString ParseGameInfo(TArray<FString> &pwads, const char *fn, const char 
 				{
 					checkpath = sc.String;
 				}
-				if (!FileExists(checkpath))
+				if (!DirEntryExists(checkpath, &isDir))
 				{
 					pos += D_AddFile(pwads, sc.String, true, pos, GameConfig);
 				}
@@ -1973,21 +2024,21 @@ static void AddAutoloadFiles(const char *autoname, TArray<FString>& allwads)
 	LumpFilterIWAD.Format("%s.", autoname);	// The '.' is appened to simplify parsing the string 
 
 	// [SP] Dialog reaction - load lights.pk3 and brightmaps.pk3 based on user choices
-	if (!(gameinfo.flags & GI_SHAREWARE))
+	if (!(gameinfo.flags & GI_SHAREWARE) && !(Args->CheckParm("-noextras")))
 	{
-		if (GameStartupInfo.LoadLights == 1 || (GameStartupInfo.LoadLights != 0 && autoloadlights))
+		if ((GameStartupInfo.LoadLights == 1 || (GameStartupInfo.LoadLights != 0 && autoloadlights)) && !(Args->CheckParm("-nolights")))
 		{
 			const char *lightswad = BaseFileSearch ("lights.pk3", NULL, true, GameConfig);
 			if (lightswad)
 				D_AddFile (allwads, lightswad, true, -1, GameConfig);
 		}
-		if (GameStartupInfo.LoadBrightmaps == 1 || (GameStartupInfo.LoadBrightmaps != 0 && autoloadbrightmaps))
+		if ((GameStartupInfo.LoadBrightmaps == 1 || (GameStartupInfo.LoadBrightmaps != 0 && autoloadbrightmaps)) && !(Args->CheckParm("-nobrightmaps")))
 		{
 			const char *bmwad = BaseFileSearch ("brightmaps.pk3", NULL, true, GameConfig);
 			if (bmwad)
 				D_AddFile (allwads, bmwad, true, -1, GameConfig);
 		}
-		if (GameStartupInfo.LoadWidescreen == 1 || (GameStartupInfo.LoadWidescreen != 0 && autoloadwidescreen))
+		if ((GameStartupInfo.LoadWidescreen == 1 || (GameStartupInfo.LoadWidescreen != 0 && autoloadwidescreen)) && !(Args->CheckParm("-nowidescreen")))
 		{
 			const char *wswad = BaseFileSearch ("game_widescreen_gfx.pk3", NULL, true, GameConfig);
 			if (wswad)
@@ -2654,15 +2705,12 @@ static bool System_DispatchEvent(event_t* ev)
 		if (buttonMap.ButtonDown(Button_Mlook) || freelook)
 		{
 			int look = int(ev->y * m_pitch * 16.0);
-			if (invertmouse) look = -look;
 			G_AddViewPitch(look, true);
 			ev->y = 0;
 		}
 		if (!buttonMap.ButtonDown(Button_Strafe) && !lookstrafe)
 		{
-			int turn = int(ev->x * m_yaw * 8.0);
-			if (invertmousex)
-				turn = -turn;
+			int turn = int(ev->x * m_yaw * 16.0);
 			G_AddViewAngle(turn, true);
 			ev->x = 0;
 		}
@@ -2756,7 +2804,7 @@ FString System_GetLocationDescription()
 	auto& vp = r_viewpoint;
 	auto Level = vp.ViewLevel;
 	return Level == nullptr ? FString() : FStringf("Map %s: \"%s\",\nx = %1.4f, y = %1.4f, z = %1.4f, angle = %1.4f, pitch = %1.4f\n%llu fps\n\n",
-		Level->MapName.GetChars(), Level->LevelName.GetChars(), vp.Pos.X, vp.Pos.Y, vp.Pos.Z, vp.Angles.Yaw.Degrees, vp.Angles.Pitch.Degrees, (unsigned long long)LastFPS);
+		Level->MapName.GetChars(), Level->LevelName.GetChars(), vp.Pos.X, vp.Pos.Y, vp.Pos.Z, vp.Angles.Yaw.Degrees(), vp.Angles.Pitch.Degrees(), (unsigned long long)LastFPS);
 
 }
 
@@ -2769,6 +2817,16 @@ void System_ConsoleToggled(int state)
 {
 	if (state == c_falling && hud_toggled)
 		D_ToggleHud();
+}
+
+void System_LanguageChanged(const char* lang)
+{
+	for (auto Level : AllLevels())
+	{
+		// does this even make sense on secondary levels...?
+		if (Level->info != nullptr) Level->LevelName = Level->info->LookupLevelName();
+	}
+	I_UpdateWindowTitle();
 }
 
 //==========================================================================
@@ -2816,7 +2874,7 @@ void System_CrashInfo(char* buffer, size_t bufflen, const char *lfstr)
 			buffer += mysnprintf(buffer, buffend - buffer, "%s%sviewx = %f", lfstr, lfstr, vp.Pos.X);
 			buffer += mysnprintf(buffer, buffend - buffer, "%sviewy = %f", lfstr, vp.Pos.Y);
 			buffer += mysnprintf(buffer, buffend - buffer, "%sviewz = %f", lfstr, vp.Pos.Z);
-			buffer += mysnprintf(buffer, buffend - buffer, "%sviewangle = %f", lfstr, vp.Angles.Yaw.Degrees);
+			buffer += mysnprintf(buffer, buffend - buffer, "%sviewangle = %f", lfstr, vp.Angles.Yaw.Degrees());
 		}
 	}
 	buffer += mysnprintf(buffer, buffend - buffer, "%s", lfstr);
@@ -2964,6 +3022,14 @@ static void System_SetTransition(int type)
 	if (type != wipe_None) wipegamestate = type == wipe_Burn? GS_FORCEWIPEBURN : type == wipe_Fade? GS_FORCEWIPEFADE : GS_FORCEWIPEMELT;
 }
 
+static void System_HudScaleChanged()
+{
+	if (StatusBar)
+	{
+		StatusBar->SetScale();
+		setsizeneeded = true;
+	}
+}
 
 bool  CheckSkipGameOptionBlock(const char* str);
 
@@ -3008,6 +3074,7 @@ static FILE* D_GetHashFile()
 
 static int D_InitGame(const FIWADInfo* iwad_info, TArray<FString>& allwads, TArray<FString>& pwads)
 {
+	SavegameFolder = iwad_info->Autoname;
 	gameinfo.gametype = iwad_info->gametype;
 	gameinfo.flags = iwad_info->flags;
 	gameinfo.nokeyboardcheats = iwad_info->nokeyboardcheats;
@@ -3215,7 +3282,7 @@ static int D_InitGame(const FIWADInfo* iwad_info, TArray<FString>& allwads, TArr
 	{ 
 		StartWindow->Progress(); 
 		if (StartScreen) StartScreen->Progress(1); 
-	}, CheckForHacks);
+	}, CheckForHacks, InitBuildTiles);
 	PatchTextures();
 	TexAnim.Init();
 	C_InitConback(TexMan.CheckForTexture(gameinfo.BorderFlat, ETextureType::Flat), true, 0.25);
@@ -3235,6 +3302,8 @@ static int D_InitGame(const FIWADInfo* iwad_info, TArray<FString>& allwads, TArr
 
 	R_ParseTrnslate();
 	PClassActor::StaticInit ();
+	FBaseCVar::InitZSCallbacks ();
+	
 	Job_Init();
 
 	// [GRB] Initialize player class list
@@ -3415,10 +3484,12 @@ static int D_InitGame(const FIWADInfo* iwad_info, TArray<FString>& allwads, TArr
 		v = Args->CheckValue ("-loadgame");
 		if (v)
 		{
-			FString file(v);
-			FixPathSeperator (file);
-			DefaultExtension (file, "." SAVEGAME_EXT);
-			G_LoadGame (file);
+			FString file = G_BuildSaveName(v);
+			if (!FileExists(file))
+			{
+				I_FatalError("Cannot find savegame %s", file.GetChars());
+			}
+			G_LoadGame(file);
 		}
 
 		v = Args->CheckValue("-playdemo");
@@ -3484,6 +3555,8 @@ static int D_InitGame(const FIWADInfo* iwad_info, TArray<FString>& allwads, TArr
 		D_StartTitle ();				// start up intro loop
 		setmodeneeded = false;			// This may be set to true here, but isn't needed for a restart
 	}
+
+	staticEventManager.OnEngineInitialize();
 	return 0;
 }
 //==========================================================================
@@ -3494,7 +3567,6 @@ static int D_InitGame(const FIWADInfo* iwad_info, TArray<FString>& allwads, TArr
 
 static int D_DoomMain_Internal (void)
 {
-	const char *v;
 	const char *wad;
 	FIWadManager *iwad_man;
 
@@ -3508,6 +3580,7 @@ static int D_DoomMain_Internal (void)
 	buttonMap.GetButton(Button_Klook)->bReleaseLock = true;
 
 	sysCallbacks = {
+		G_Responder,
 		System_WantGuiCapture,
 		System_WantLeftButton,
 		System_NetGame,
@@ -3533,11 +3606,21 @@ static int D_DoomMain_Internal (void)
 		System_ToggleFullConsole,
 		System_StartCutscene,
 		System_SetTransition,
+		CheckCheatmode,
+		System_HudScaleChanged,
+		M_SetSpecialMenu,
+		OnMenuOpen,
+		System_LanguageChanged,
+		OkForLocalization,
+		[]() ->FConfigFile* { return GameConfig; }
+
 	};
 
 	
 	std::set_new_handler(NewFailure);
 	const char *batchout = Args->CheckValue("-errorlog");
+
+	D_DoomInit();
 	
 	// [RH] Make sure zdoom.pk3 is always loaded,
 	// as it contains magic stuff we need.
@@ -3570,9 +3653,7 @@ static int D_DoomMain_Internal (void)
 		Printf("\n");
 	}
 
-	if (!batchrun) Printf(PRINT_LOG, "%s version %s\n", GAMENAME, GetVersionString());
-
-	D_DoomInit();
+	Printf("%s version %s\n", GAMENAME, GetVersionString());
 
 	extern void D_ConfirmSendStats();
 	D_ConfirmSendStats();
@@ -3585,19 +3666,6 @@ static int D_DoomMain_Internal (void)
 
 	// Now that we have the IWADINFO, initialize the autoload ini sections.
 	GameConfig->DoAutoloadSetup(iwad_man);
-
-	// Prevent the game from starting if the savegame passed to -loadgame is invalid
-	v = Args->CheckValue("-loadgame");
-	if (v)
-	{
-		FString file(v);
-		FixPathSeperator(file);
-		DefaultExtension(file, "." SAVEGAME_EXT);
-		if (!FileExists(file))
-		{
-			I_FatalError("Cannot find savegame %s", file.GetChars());
-		}
-	}
 
 	// reinit from here
 
@@ -3662,6 +3730,7 @@ int GameMain()
 {
 	int ret = 0;
 	GameTicRate = TICRATE;
+	I_InitTime();
 
 	ConsoleCallbacks cb = {
 		D_UserInfoChanged,
@@ -3670,7 +3739,7 @@ int GameMain()
 		G_GetUserCVar,
 		[]() { return gamestate != GS_FULLCONSOLE && gamestate != GS_STARTUP; }
 	};
-
+	C_InitCVars(0);
 	C_InstallHandlers(&cb);
 	SetConsoleNotifyBuffer();
 
@@ -3701,6 +3770,7 @@ int GameMain()
 	I_ShutdownInput();
 	M_SaveDefaultsFinal();
 	DeleteStartupScreen();
+	C_UninitCVars(); // must come last so that nothing will access the CVARs anymore after deletion.
 	delete Args;
 	Args = nullptr;
 	return ret;

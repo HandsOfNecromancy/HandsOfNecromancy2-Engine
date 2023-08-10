@@ -637,6 +637,7 @@ size_t VMFunctionBuilder::Emit(int opcode, int opa, VM_SHALF opbc)
 		int chg;
 		if (opa & REGT_MULTIREG2) chg = 2;
 		else if (opa & REGT_MULTIREG3) chg = 3;
+		else if (opa & REGT_MULTIREG4) chg = 4;
 		else chg = 1;
 		ParamChange(chg);
 	}
@@ -789,7 +790,7 @@ VMFunction *FFunctionBuildList::AddFunction(PNamespace *gnspc, const VersionInfo
 	it.PrintableName = name;
 	it.Function = new VMScriptFunction;
 	it.Function->Name = functype->SymbolName;
-	it.Function->PrintableName = name;
+	it.Function->QualifiedName = it.Function->PrintableName = ClassDataAllocator.Strdup(name);
 	it.Function->ImplicitArgs = functype->GetImplicitArgs();
 	it.Proto = nullptr;
 	it.FromDecorate = fromdecorate;

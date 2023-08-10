@@ -326,6 +326,8 @@ static FFlagDef ActorFlagDefs[]=
 	DEFINE_FLAG(MF8, RETARGETAFTERSLAM, AActor, flags8),
 	DEFINE_FLAG(MF8, STOPRAILS, AActor, flags8),
 	DEFINE_FLAG(MF8, FALLDAMAGE, AActor, flags8),
+	DEFINE_FLAG(MF8, MINVISIBLE, AActor, flags8),
+	DEFINE_FLAG(MF8, MVISBLOCKED, AActor, flags8),
 	DEFINE_FLAG(MF8, ABSVIEWANGLES, AActor, flags8),
 	DEFINE_FLAG(MF8, ALLOWTHRUBITS, AActor, flags8),
 	DEFINE_FLAG(MF8, FULLVOLSEE, AActor, flags8),
@@ -343,6 +345,12 @@ static FFlagDef ActorFlagDefs[]=
 	DEFINE_FLAG(MF8, CROSSLINECHECK, AActor, flags8),
 	DEFINE_FLAG(MF8, MASTERNOSEE, AActor, flags8),
 	DEFINE_FLAG(MF8, ADDLIGHTLEVEL, AActor, flags8),
+	DEFINE_FLAG(MF8, ONLYSLAMSOLID, AActor, flags8),
+
+	DEFINE_FLAG(MF9, SHADOWAIM, AActor, flags9),
+	DEFINE_FLAG(MF9, DOSHADOWBLOCK, AActor, flags9),
+	DEFINE_FLAG(MF9, SHADOWBLOCK, AActor, flags9),
+	DEFINE_FLAG(MF9, SHADOWAIMVERT, AActor, flags9),
 
 	// Effect flags
 	DEFINE_FLAG(FX, VISIBILITYPULSE, AActor, effects),
@@ -352,8 +360,7 @@ static FFlagDef ActorFlagDefs[]=
 	DEFINE_FLAG(RF, FORCEYBILLBOARD, AActor, renderflags),
 	DEFINE_FLAG(RF, FORCEXYBILLBOARD, AActor, renderflags),
 	DEFINE_FLAG(RF, ROLLSPRITE, AActor, renderflags), // [marrub] roll the sprite billboard
-			// [fgsfds] Flat sprites
-	DEFINE_FLAG(RF, FLATSPRITE, AActor, renderflags),
+	DEFINE_FLAG(RF, FLATSPRITE, AActor, renderflags), // [fgsfds] Flat sprites
 	DEFINE_FLAG(RF, WALLSPRITE, AActor, renderflags),
 	DEFINE_FLAG(RF, DONTFLIP, AActor, renderflags),
 	DEFINE_FLAG(RF, ROLLCENTER, AActor, renderflags),
@@ -707,6 +714,10 @@ void InitThingdef()
 	sectorportalstruct->Size = sizeof(FSectorPortal);
 	sectorportalstruct->Align = alignof(FSectorPortal);
 
+	auto lineportalstruct = NewStruct("LinePortal", nullptr, true);
+	lineportalstruct->Size = sizeof(FLinePortal);
+	lineportalstruct->Align = alignof(FLinePortal);
+
 	auto playerclassstruct = NewStruct("PlayerClass", nullptr, true);
 	playerclassstruct->Size = sizeof(FPlayerClass);
 	playerclassstruct->Align = alignof(FPlayerClass);
@@ -718,6 +729,10 @@ void InitThingdef()
 	auto teamstruct = NewStruct("Team", nullptr, true);
 	teamstruct->Size = sizeof(FTeam);
 	teamstruct->Align = alignof(FTeam);
+
+	auto terraindefstruct = NewStruct("TerrainDef", nullptr, true);
+	terraindefstruct->Size = sizeof(FTerrainDef);
+	terraindefstruct->Align = alignof(FTerrainDef);
 
 	PStruct *pstruct = NewStruct("PlayerInfo", nullptr, true);
 	pstruct->Size = sizeof(player_t);
@@ -781,6 +796,10 @@ void InitThingdef()
 	auto fltd = NewStruct("FLineTraceData", nullptr);
 	fltd->Size = sizeof(FLineTraceData);
 	fltd->Align = alignof(FLineTraceData);
+
+	auto fspp = NewStruct("FSpawnParticleParams", nullptr);
+	fspp->Size = sizeof(FSpawnParticleParams);
+	fspp->Align = alignof(FSpawnParticleParams);
 }
 
 void SynthesizeFlagFields()
@@ -805,7 +824,7 @@ void SynthesizeFlagFields()
 DEFINE_ACTION_FUNCTION(DObject, BAM)
 {
 	PARAM_PROLOGUE;
-	PARAM_FLOAT(ang);
-	ACTION_RETURN_INT(DAngle(ang).BAMs());
+	PARAM_ANGLE(ang);
+	ACTION_RETURN_INT(ang.BAMs());
 }
 

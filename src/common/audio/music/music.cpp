@@ -51,11 +51,13 @@
 #include <zmusic.h>
 #include "md5.h"
 #include "gain_analysis.h"
-#include "gameconfigfile.h"
 #include "i_specialpaths.h"
+#include "configfile.h"
+#include "c_cvars.h"
 
 // EXTERNAL FUNCTION PROTOTYPES --------------------------------------------
 
+extern int nomusic;
 extern float S_GetMusicVolume (const char *music);
 
 static void S_ActivatePlayList(bool goBack);
@@ -81,6 +83,8 @@ static MusicCallbacks mus_cb = { nullptr, DefaultOpenMusic };
 
 
 // PUBLIC DATA DEFINITIONS -------------------------------------------------
+EXTERN_CVAR(Bool, mus_enabled)
+EXTERN_CVAR(Float, snd_musicvolume)
 EXTERN_CVAR(Int, snd_mididevice)
 EXTERN_CVAR(Float, mod_dumb_mastervolume)
 EXTERN_CVAR(Float, fluid_gain)
@@ -117,10 +121,11 @@ int MusicEnabled() // int return is for scripting
 static std::unique_ptr<SoundStream> musicStream;
 static TArray<SoundStream*> customStreams;
 
-SoundStream *S_CreateCustomStream(size_t size, int samplerate, int numchannels, StreamCallback cb, void *userdata)
+SoundStream *S_CreateCustomStream(size_t size, int samplerate, int numchannels, MusicCustomStreamType sampletype, StreamCallback cb, void *userdata)
 {
 	int flags = 0;
 	if (numchannels < 2) flags |= SoundStream::Mono;
+	if (sampletype == MusicSamplesFloat) flags |= SoundStream::Float;
 	auto stream = GSnd->CreateStream(cb, int(size), flags, samplerate, userdata);
 	if (stream)
 	{
@@ -240,15 +245,15 @@ static bool S_StartMusicPlaying(ZMusic_MusicStream song, bool loop, float rel_vo
 	}
 	ZMusic_Stop(song);
 	// make sure the volume modifiers update properly in case replay gain settings have changed.
-	fluid_gain.Callback();
-	mod_dumb_mastervolume.Callback();
+	fluid_gain->Callback();
+	mod_dumb_mastervolume->Callback();
 	if (!ZMusic_Start(song, subsong, loop))
 	{
 		return false;
 	}
 
 	// Notify the sound system of the changed relative volume
-	snd_musicvolume.Callback();
+	snd_musicvolume->Callback();
 	return true;
 }
 
@@ -409,7 +414,7 @@ static FString ReplayGainHash(ZMusicCustomReader* reader, int flength, int playe
 
 	for (size_t j = 0; j < sizeof(digest); ++j)
 	{
-		sprintf(digestout + (j * 2), "%02X", digest[j]);
+		snprintf(digestout + (j * 2), 3, "%02X", digest[j]);
 	}
 	digestout[32] = 0;
 
@@ -516,8 +521,8 @@ static void CheckReplayGain(const char *musicname, EMidiDevice playertype, const
 {
 	mus_playing.replayGain = 0.f;
 	mus_playing.replayGainFactor = dBToAmplitude(mus_gainoffset);
-	fluid_gain.Callback();
-	mod_dumb_mastervolume.Callback();
+	fluid_gain->Callback();
+	mod_dumb_mastervolume->Callback();
 	if (!mus_usereplaygain) return;
 
 	FileReader reader = mus_cb.OpenMusic(musicname);

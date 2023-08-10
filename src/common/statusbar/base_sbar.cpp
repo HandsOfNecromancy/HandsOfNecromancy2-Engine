@@ -46,6 +46,8 @@
 #include "utf8.h"
 #include "v_text.h"
 #include "vm.h"
+#include "i_interface.h"
+#include "r_videoscale.h"
 
 FGameTexture* CrosshairImage;
 static int CrosshairNum;
@@ -60,8 +62,18 @@ CVAR(Int, crosshairhealth, 2, CVAR_ARCHIVE);
 CVARD(Float, crosshairscale, 0.5, CVAR_ARCHIVE, "changes the size of the crosshair");
 CVAR(Bool, crosshairgrow, false, CVAR_ARCHIVE);
 
-EXTERN_CVAR(Float, hud_scalefactor)
-EXTERN_CVAR(Bool, hud_aspectscale)
+CUSTOM_CVARD(Float, hud_scalefactor, 1.f, CVAR_ARCHIVE, "changes the hud scale")
+{
+	if (self < 0.36f) self = 0.36f;
+	else if (self > 1) self = 1;
+	else if (sysCallbacks.HudScaleChanged) sysCallbacks.HudScaleChanged();
+}
+
+CUSTOM_CVARD(Bool, hud_aspectscale, true, CVAR_ARCHIVE, "enables aspect ratio correction for the status bar")
+{
+	if (sysCallbacks.HudScaleChanged) sysCallbacks.HudScaleChanged();
+}
+
 
 void ST_LoadCrosshair(int num, bool alwaysload)
 {
@@ -113,7 +125,7 @@ void ST_UnloadCrosshair()
 //
 //---------------------------------------------------------------------------
 
-void ST_DrawCrosshair(int phealth, double xpos, double ypos, double scale)
+void ST_DrawCrosshair(int phealth, double xpos, double ypos, double scale, DAngle angle)
 {
 	uint32_t color;
 	double size;
@@ -196,6 +208,7 @@ void ST_DrawCrosshair(int phealth, double xpos, double ypos, double scale)
 		xpos, ypos,
 		DTA_DestWidth, w,
 		DTA_DestHeight, h,
+		DTA_Rotate, angle.Degrees(),
 		DTA_AlphaChannel, true,
 		DTA_FillColor, color & 0xFFFFFF,
 		TAG_DONE);
@@ -355,9 +368,11 @@ void DStatusBarCore::SetScale()
 	double screenaspect = w / double(h);
 	double aspectscale = 1.0;
 
+	const double ViewportAspect = 1. / ViewportPixelAspect();
+
 	if ((horz == 320 && vert == 200) || (horz == 640 && vert == 400))
 	{
-		refaspect = 1.333;
+		refaspect = (4. / 3.);
 		if (!hud_aspectscale) aspectscale = 1 / 1.2;
 	}
 
@@ -372,9 +387,9 @@ void DStatusBarCore::SetScale()
 		refw = h * refaspect;
 	}
 	refw *= hud_scalefactor;
-	refh *= hud_scalefactor * aspectscale;
+	refh *= hud_scalefactor * aspectscale * ViewportAspect;
 
-	int sby = vert - int(RelTop * hud_scalefactor * aspectscale);
+	int sby = vert - int(RelTop * hud_scalefactor * aspectscale * ViewportAspect);
 	// Use full pixels for destination size.
 
 	ST_X = xs_CRoundToInt((w - refw) / 2);
@@ -745,7 +760,7 @@ void DStatusBarCore::DrawString(FFont* font, const FString& cstring, double x, d
 	{
 		if (ch == ' ')
 		{
-			x += monospaced ? spacing : font->GetSpaceWidth() + spacing;
+			x += (monospaced ? spacing : font->GetSpaceWidth() + spacing) * scaleX;
 			continue;
 		}
 		else if (ch == TEXTCOLOR_ESCAPE)
@@ -765,7 +780,7 @@ void DStatusBarCore::DrawString(FFont* font, const FString& cstring, double x, d
 		width += font->GetDefaultKerning();
 
 		if (!monospaced) //If we are monospaced lets use the offset
-			x += (c->GetDisplayLeftOffset() + 1); //ignore x offsets since we adapt to character size
+			x += (c->GetDisplayLeftOffset() * scaleX + 1); //ignore x offsets since we adapt to character size
 
 		double rx, ry, rw, rh;
 		rx = x + drawOffset.X;
@@ -816,12 +831,12 @@ void DStatusBarCore::DrawString(FFont* font, const FString& cstring, double x, d
 			DTA_LegacyRenderStyle, ERenderStyle(style),
 			TAG_DONE);
 
-		dx = monospaced
-			? spacing
-			: width + spacing - (c->GetDisplayLeftOffset() + 1);
-
 		// Take text scale into account
-		x += dx * scaleX;
+		dx = monospaced
+			? spacing * scaleX
+			: (double(width) + spacing - c->GetDisplayLeftOffset()) * scaleX - 1;
+
+		x += dx;
 	}
 }
 

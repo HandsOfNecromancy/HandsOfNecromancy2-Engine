@@ -90,7 +90,7 @@ enum EWRF_Options
 
 // [SO] 1=Weapons states are all 1 tick
 //		2=states with a function 1 tick, others 0 ticks.
-CVAR(Int, sv_fastweapons, false, CVAR_SERVERINFO);
+CVAR(Int, sv_fastweapons, 0, CVAR_SERVERINFO);
 
 // PRIVATE DATA DEFINITIONS ------------------------------------------------
 
@@ -182,7 +182,7 @@ DPSprite::DPSprite(player_t *owner, AActor *caller, int id)
 {
 	Caller = caller;
 	baseScale = {1.0, 1.2};
-	rotation = 0.;
+	rotation = nullAngle;
 	scale = {1.0, 1.0};
 	pivot = {0.0, 0.0};
 	for (int i = 0; i < 4; i++)
@@ -326,6 +326,13 @@ DPSprite *player_t::GetPSprite(PSPLayers layer)
 	else
 	{
 		oldcaller = pspr->Caller;
+
+		// update scaling properties here
+		if (newcaller != nullptr && newcaller->IsKindOf(NAME_Weapon))
+		{
+			pspr->baseScale.X = newcaller->FloatVar(NAME_WeaponScaleX);
+			pspr->baseScale.Y = newcaller->FloatVar(NAME_WeaponScaleY);
+		}
 	}
 
 	// Always update the caller here in case we switched weapon
@@ -556,7 +563,7 @@ void DPSprite::SetState(FState *newstate, bool pending)
 			{
 				// If an unsafe function (i.e. one that accesses user variables) is being detected, print a warning once and remove the bogus function. We may not call it because that would inevitably crash.
 				Printf(TEXTCOLOR_RED "Unsafe state call in state %sd to %s which accesses user variables. The action function has been removed from this state\n", 
-					FState::StaticGetStateName(newstate).GetChars(), newstate->ActionFunc->PrintableName.GetChars());
+					FState::StaticGetStateName(newstate).GetChars(), newstate->ActionFunc->PrintableName);
 				newstate->ActionFunc = nullptr;
 			}
 			if (newstate->CallAction(Owner->mo, Caller, &stp, &nextstate))
@@ -639,6 +646,27 @@ void P_BobWeapon (player_t *player, float *x, float *y, double ticfrac)
 		return;
 	}
 	*x = *y = 0;
+}
+
+void P_BobWeapon3D (player_t *player, FVector3 *translation, FVector3 *rotation, double ticfrac)
+{
+	IFVIRTUALPTRNAME(player->mo, NAME_PlayerPawn, BobWeapon3D)
+	{
+		VMValue param[] = { player->mo, ticfrac };
+		DVector3 t, r;
+		VMReturn returns[2];
+		returns[0].Vec3At(&t);
+		returns[1].Vec3At(&r);
+		VMCall(func, param, 2, returns, 2);
+		translation->X = (float)t.X;
+		translation->Y = (float)t.Y;
+		translation->Z = (float)t.Z;
+		rotation->X = (float)r.X;
+		rotation->Y = (float)r.Y;
+		rotation->Z = (float)r.Z;
+		return;
+	}
+	*translation = *rotation = {};
 }
 
 //---------------------------------------------------------------------------
@@ -1204,8 +1232,8 @@ DAngle P_BulletSlope (AActor *mo, FTranslatedLineTarget *pLineTarget, int aimfla
 	i = 2;
 	do
 	{
-		an = mo->Angles.Yaw + angdiff[i];
-		pitch = P_AimLineAttack (mo, an, 16.*64, pLineTarget, 0., aimflags);
+		an = mo->Angles.Yaw + DAngle::fromDeg(angdiff[i]);
+		pitch = P_AimLineAttack (mo, an, 16.*64, pLineTarget, nullAngle, aimflags);
 
 		if (mo->player != nullptr &&
 			mo->Level->IsFreelookAllowed() &&
@@ -1223,7 +1251,7 @@ DEFINE_ACTION_FUNCTION(AActor, BulletSlope)
 	PARAM_SELF_PROLOGUE(AActor);
 	PARAM_POINTER(t, FTranslatedLineTarget);
 	PARAM_INT(aimflags);
-	ACTION_RETURN_FLOAT(P_BulletSlope(self, t, aimflags).Degrees);
+	ACTION_RETURN_FLOAT(P_BulletSlope(self, t, aimflags).Degrees());
 }
 
 //------------------------------------------------------------------------

@@ -46,6 +46,7 @@
 #include "filesystem.h"
 #include "am_map.h"
 #include "c_dispatch.h"
+#include "i_interface.h"
 
 #include "p_setup.h"
 #include "p_local.h"
@@ -84,6 +85,7 @@
 #include "c_buttons.h"
 #include "screenjob.h"
 #include "types.h"
+#include "gstrings.h"
 
 #include "gi.h"
 
@@ -100,6 +102,7 @@
 
 void STAT_StartNewGame(const char *lev);
 void STAT_ChangeLevel(const char *newl, FLevelLocals *Level);
+FString STAT_EpisodeName();
 
 EXTERN_CVAR(Bool, save_formatted)
 EXTERN_CVAR (Float, sv_gravity)
@@ -143,17 +146,30 @@ CUSTOM_CVAR(Bool, gl_notexturefill, false, CVAR_NOINITCALL)
 	}
 }
 
-CUSTOM_CVAR(Int, gl_lightmode, 3, CVAR_ARCHIVE | CVAR_NOINITCALL)
+CUSTOM_CVAR(Int, gl_maplightmode, -1, CVAR_NOINITCALL) // this is just for testing. -1 means 'inactive'
 {
-	int newself = self;
-	if (newself > 8) newself = 16;	// use 8 and 16 for software lighting to avoid conflicts with the bit mask ( in hindsight a bad idea.)
-	else if (newself > 5) newself = 8;
-	else if (newself < 0) newself = 0;
-	if (self != newself) self = newself;
-	else for (auto Level : AllLevels())
+	if (self > 5 || self < -1) self = -1;
+}
+
+CUSTOM_CVAR(Int, gl_lightmode, 1, CVAR_ARCHIVE | CVAR_NOINITCALL)
+{
+	if (self < 0 || self > 2) self = 2;
+}
+
+ELightMode getRealLightmode(FLevelLocals* Level, bool for3d)
+{
+	auto lightmode = Level->info->lightmode;
+	if (lightmode == ELightMode::NotSet)
 	{
-		if ((Level->info == nullptr || Level->info->lightmode == ELightMode::NotSet)) Level->lightMode = (ELightMode)*self;
+		if (gl_maplightmode != -1) lightmode = (ELightMode)*gl_maplightmode;
+		else lightmode = ELightMode::Doom;
 	}
+	if (lightmode == ELightMode::Doom && for3d)
+	{
+		if (gl_lightmode == 1) lightmode = ELightMode::ZDoomSoftware;
+		else if (gl_lightmode == 2) lightmode = ELightMode::DoomSoftware;
+	}
+	return lightmode;
 }
 
 CVAR(Int, sv_alwaystally, 0, CVAR_SERVERINFO)
@@ -545,6 +561,7 @@ void G_InitNew (const char *mapname, bool bTitleLevel)
 	if (primaryLevel->info != nullptr)
 		staticEventManager.WorldUnloaded(FString());	// [MK] don't pass the new map, as it's not a level transition
 
+	UnlatchCVars ();
 	if (!savegamerestore)
 	{
 		G_ClearHubInfo();
@@ -554,9 +571,14 @@ void G_InitNew (const char *mapname, bool bTitleLevel)
 		// [RH] Mark all levels as not visited
 		for (unsigned int i = 0; i < wadlevelinfos.Size(); i++)
 			wadlevelinfos[i].flags = wadlevelinfos[i].flags & ~LEVEL_VISITED;
+
+		auto redirectmap = FindLevelInfo(mapname);
+		if (redirectmap->RedirectCVAR != NAME_None)
+			redirectmap = redirectmap->CheckLevelRedirect();
+		if (redirectmap && redirectmap->MapName.GetChars()[0])
+				mapname = redirectmap->MapName;
 	}
 
-	UnlatchCVars ();
 	G_VerifySkill();
 	UnlatchCVars ();
 	globalfreeze = globalchangefreeze = 0;
@@ -1020,11 +1042,6 @@ DIntermissionController* FLevelLocals::CreateIntermission()
 
 void RunIntermission(level_info_t* fromMap, level_info_t* toMap, DIntermissionController* intermissionScreen, DObject* statusScreen, std::function<void(bool)> completionf)
 {
-	if (!intermissionScreen && !statusScreen)
-	{
-		completionf(false);
-		return;
-	}
 	cutscene.runner = CreateRunner(false);
 	GC::WriteBarrier(cutscene.runner);
 	cutscene.completion = std::move(completionf);
@@ -1115,7 +1132,7 @@ void G_DoCompleted (void)
 	bool endgame = strncmp(nextlevel, "enDSeQ", 6) == 0;
 	intermissionScreen = primaryLevel->CreateIntermission();
 	auto nextinfo = !playinter || endgame? nullptr : FindLevelInfo(nextlevel, false);
-	RunIntermission(playinter? primaryLevel->info : nullptr, nextinfo, intermissionScreen, statusScreen, [=](bool)
+	RunIntermission(primaryLevel->info, nextinfo, intermissionScreen, statusScreen, [=](bool)
 	{
 		if (!endgame) primaryLevel->WorldDone();
 		else D_StartTitle();
@@ -1284,12 +1301,7 @@ bool FLevelLocals::DoCompleted (FString nextlevel, wbstartstruct_t &wminfo)
 
 	finishstate = mode;
 
-	if (!ShouldDoIntermission(nextcluster, thiscluster))
-	{
-		WorldDone ();
-		return false;
-	}
-	return true;
+	return ShouldDoIntermission(nextcluster, thiscluster);
 }
 
 //==========================================================================
@@ -1368,7 +1380,7 @@ void FLevelLocals::DoLoadLevel(const FString &nextmapname, int position, bool au
 	{
 		UCVarValue val;
 		val.Int = NextSkill;
-		gameskill.ForceSet (val, CVAR_Int);
+		gameskill->ForceSet (val, CVAR_Int);
 		NextSkill = -1;
 	}
 
@@ -1392,7 +1404,7 @@ void FLevelLocals::DoLoadLevel(const FString &nextmapname, int position, bool au
 	{
 		FString mapname = nextmapname;
 		mapname.ToUpper();
-		Printf("\n%s\n\n" TEXTCOLOR_BOLD "%s - %s\n\n", console_bar, mapname.GetChars(), LevelName.GetChars());
+		Printf(PRINT_HIGH | PRINT_NONOTIFY, "\n" TEXTCOLOR_NORMAL "%s\n\n" TEXTCOLOR_BOLD "%s - %s\n\n", console_bar, mapname.GetChars(), LevelName.GetChars());
 	}
 
 	// Set the sky map.
@@ -1709,6 +1721,7 @@ int FLevelLocals::FinishTravel ()
 		}
 		pawn->LinkToWorld (nullptr);
 		pawn->ClearInterpolation();
+		pawn->ClearFOVInterpolation();
 		const int tid = pawn->tid;	// Save TID (actor isn't linked into the hash chain yet)
 		pawn->tid = 0;				// Reset TID
 		pawn->SetTID(tid);			// Set TID (and link actor into the hash chain)
@@ -1781,8 +1794,7 @@ void FLevelLocals::Init()
 {
 	P_InitParticles(this);
 	P_ClearParticles(this);
-	BaseBlendA = 0.0f;		// Remove underwater blend effect, if any
-
+	
 	gravity = sv_gravity * 35/TICRATE;
 	aircontrol = sv_aircontrol;
 	AirControlChanged();
@@ -1860,12 +1872,11 @@ void FLevelLocals::Init()
 
 	pixelstretch = info->pixelstretch;
 
-	compatflags.Callback();
-	compatflags2.Callback();
+	compatflags->Callback();
+	compatflags2->Callback();
 
 	DefaultEnvironment = info->DefaultEnvironment;
 
-	lightMode = info->lightmode == ELightMode::NotSet? (ELightMode)*gl_lightmode : info->lightmode;
 	brightfog = info->brightfog < 0? gl_brightfog : !!info->brightfog;
 	lightadditivesurfaces = info->lightadditivesurfaces < 0 ? gl_lightadditivesurfaces : !!info->lightadditivesurfaces;
 	notexturefill = info->notexturefill < 0 ? gl_notexturefill : !!info->notexturefill;
@@ -2429,3 +2440,31 @@ void FLevelLocals::SetMusic()
 {
 	S_ChangeMusic(Music, musicorder);
 }
+
+
+DEFINE_ACTION_FUNCTION(FLevelLocals, GetClusterName)
+{
+	PARAM_SELF_STRUCT_PROLOGUE(FLevelLocals)
+	cluster_info_t* cluster = FindClusterInfo(self->cluster);
+	FString retval;
+
+	if (cluster)
+	{
+		if (cluster->flags & CLUSTER_LOOKUPNAME)
+			retval = GStrings(cluster->ClusterName);
+		else
+			retval = cluster->ClusterName;
+	}
+	ACTION_RETURN_STRING(retval);
+}
+
+DEFINE_ACTION_FUNCTION(FLevelLocals, GetEpisodeName)
+{
+	// this is a bit of a crapshoot because ZDoom never assigned a level to an episode
+	// and retroactively fixing this is not possible.
+	// This will need some heuristics to assign a proper episode to each existing level.
+	// Stuff for later. for now this just checks the STAT module for the currently running episode,
+	// which should be fine unless cheating.
+	ACTION_RETURN_STRING(GStrings.localize(STAT_EpisodeName()));
+}
+

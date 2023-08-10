@@ -92,8 +92,7 @@ void	P_PredictionLerpReset();
 #define SPF_TEMPPLAYER		1	// spawning a short-lived dummy player
 #define SPF_WEAPONFULLYUP	2	// spawn with weapon already raised
 
-int P_FaceMobj (AActor *source, AActor *target, DAngle *delta);
-bool P_SeekerMissile (AActor *actor, double thresh, double turnMax, bool precise = false, bool usecurspeed=false);
+bool P_SeekerMissile (AActor *actor, DAngle thresh, DAngle turnMax, bool precise = false, bool usecurspeed=false);
 
 enum EPuffFlags
 {
@@ -219,6 +218,7 @@ enum SPF
 {
 	SPF_FORCECLAMP = 1,	// players always clamp
 	SPF_INTERPOLATE = 2,
+	SPF_SCALEDNOLERP = 4,
 };
 
 enum PCM
@@ -268,6 +268,7 @@ void	P_PlayerStartStomp (AActor *actor, bool mononly=false);		// [RH] Stomp on t
 void	P_SlideMove (AActor* mo, const DVector2 &pos, int numsteps);
 bool	P_BounceWall (AActor *mo);
 bool	P_BounceActor (AActor *mo, AActor *BlockingMobj, bool ontop);
+bool    P_ReflectOffActor(AActor* mo, AActor* blocking);
 int	P_CheckSight (AActor *t1, AActor *t2, int flags=0);
 
 enum ESightFlags
@@ -299,7 +300,7 @@ void	P_FindFloorCeiling (AActor *actor, int flags=0);
 
 bool	P_ChangeSector (sector_t* sector, int crunch, double amt, int floorOrCeil, bool isreset, bool instant = false);
 
-DAngle P_AimLineAttack(AActor *t1, DAngle angle, double distance, FTranslatedLineTarget *pLineTarget = NULL, DAngle vrange = 0., int flags = 0, AActor *target = NULL, AActor *friender = NULL);
+DAngle P_AimLineAttack(AActor *t1, DAngle angle, double distance, FTranslatedLineTarget *pLineTarget = NULL, DAngle vrange = nullAngle, int flags = 0, AActor *target = NULL, AActor *friender = NULL);
 
 enum	// P_AimLineAttack flags
 {
@@ -363,8 +364,8 @@ struct FRailParams
 	double maxdiff = 0;
 	int flags = 0;
 	PClassActor *puff = nullptr;
-	DAngle angleoffset = 0.;
-	DAngle pitchoffset = 0.;
+	DAngle angleoffset = nullAngle;
+	DAngle pitchoffset = nullAngle;
 	double distance = 8192;
 	int duration = 0;
 	double sparsity = 1.0;
@@ -406,9 +407,12 @@ enum
 	RADF_SOURCEISSPOT = 4,
 	RADF_NODAMAGE = 8,
 	RADF_THRUSTZ = 16,
-	RADF_OLDRADIUSDAMAGE = 32
+	RADF_OLDRADIUSDAMAGE = 32,
+	RADF_THRUSTLESS = 64,
+	RADF_NOALLIES = 128,
+	RADF_CIRCULAR = 256
 };
-int P_GetRadiusDamage(AActor *self, AActor *thing, int damage, int distance, int fulldmgdistance, bool oldradiusdmg);
+int P_GetRadiusDamage(AActor *self, AActor *thing, int damage, int distance, int fulldmgdistance, bool oldradiusdmg, bool circular);
 int	P_RadiusAttack (AActor *spot, AActor *source, int damage, int distance, 
 						FName damageType, int flags, int fulldamagedistance=0, FName species = NAME_None);
 
@@ -432,7 +436,7 @@ const secplane_t * P_CheckSlopeWalk(AActor *actor, DVector2 &move);
 // P_INTER
 //
 void P_TouchSpecialThing (AActor *special, AActor *toucher);
-int  P_DamageMobj (AActor *target, AActor *inflictor, AActor *source, int damage, FName mod, int flags=0, DAngle angle = 0.);
+int  P_DamageMobj (AActor *target, AActor *inflictor, AActor *source, int damage, FName mod, int flags=0, DAngle angle = nullAngle);
 void P_PoisonMobj (AActor *target, AActor *inflictor, AActor *source, int damage, int duration, int period, FName type);
 bool P_GiveBody (AActor *actor, int num, int max=0);
 bool P_PoisonPlayer (player_t *player, AActor *poisoner, AActor *source, int poison);

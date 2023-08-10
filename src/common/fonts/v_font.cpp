@@ -73,6 +73,7 @@ static int TranslationMapCompare (const void *a, const void *b);
 // EXTERNAL DATA DECLARATIONS ----------------------------------------------
 
 extern int PrintColors[];
+extern TArray<FBitmap> sheetBitmaps;
 
 // PUBLIC DATA DEFINITIONS -------------------------------------------------
 FFont* SmallFont, * SmallFont2, * BigFont, * BigUpper, * ConFont, * IntermissionFont, * NewConsoleFont, * NewSmallFont, 
@@ -92,6 +93,7 @@ TArray<PalEntry> TranslationColors;
 
 FFont *V_GetFont(const char *name, const char *fontlumpname)
 {
+	if (name == nullptr) return nullptr;
 	if (!stricmp(name, "DBIGFONT")) name = "BigFont";
 	else if (!stricmp(name, "CONFONT")) name = "ConsoleFont";	// several mods have used the name CONFONT directly and effectively duplicated the font.
 	else if (!stricmp(name, "INDEXFON")) name = "IndexFont";	// Same here - for whatever reason some people had to use its 8 character name...
@@ -136,10 +138,10 @@ FFont *V_GetFont(const char *name, const char *fontlumpname)
 				return font;
 			}
 		}
-		FTextureID picnum = TexMan.CheckForTexture (name, ETextureType::Any);
-		if (picnum.isValid())
+		FTextureID texid = TexMan.CheckForTexture (name, ETextureType::Any);
+		if (texid.isValid())
 		{
-			auto tex = TexMan.GetGameTexture(picnum);
+			auto tex = TexMan.GetGameTexture(texid);
 			if (tex && tex->GetSourceLump() >= folderfile)
 			{
 				FFont *CreateSinglePicFont(const char *name);
@@ -862,6 +864,7 @@ EColorRange V_ParseFontColor (const uint8_t *&color_value, int normalcolor, int 
 
 void V_InitFonts()
 {
+	sheetBitmaps.Clear();
 	CreateLuminosityTranslationRanges();
 	V_InitCustomFonts();
 
@@ -928,6 +931,7 @@ void V_ClearFonts()
 	}
 	FFont::FirstFont = nullptr;
 	AlternativeSmallFont = OriginalSmallFont = CurrentConsoleFont = NewSmallFont = NewConsoleFont = SmallFont = SmallFont2 = BigFont = ConFont = IntermissionFont = nullptr;
+	sheetBitmaps.Clear();
 }
 
 //==========================================================================

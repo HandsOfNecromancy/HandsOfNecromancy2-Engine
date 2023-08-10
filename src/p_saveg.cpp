@@ -61,6 +61,7 @@
 #include "version.h"
 #include "fragglescript/t_script.h"
 #include "s_music.h"
+#include "model.h"
 
 EXTERN_CVAR(Bool, save_formatted)
 
@@ -968,6 +969,7 @@ void FLevelLocals::Serialize(FSerializer &arc, bool hubload)
 
 	arc("flags", flags)
 		("flags2", flags2)
+		("flags3", flags3)
 		("fadeto", fadeto)
 		("found_secrets", found_secrets)
 		("found_items", found_items)
@@ -996,7 +998,8 @@ void FLevelLocals::Serialize(FSerializer &arc, bool hubload)
 		("scrolls", Scrolls)
 		("automap", automap)
 		("interpolator", interpolator)
-		("frozenstate", frozenstate);
+		("frozenstate", frozenstate)
+		("savedModelFiles", savedModelFiles);
 
 
 	// Hub transitions must keep the current total time

@@ -113,6 +113,10 @@ enum
 	QF_FULLINTENSITY =	1 << 4,
 	QF_WAVE =			1 << 5,
 	QF_3D =				1 << 6,
+	QF_GROUNDONLY =		1 << 7,
+	QF_AFFECTACTORS =	1 << 8,
+	QF_SHAKEONLY =		1 << 9,
+	QF_DAMAGEFALLOFF =	1 << 10,
 };
 
 struct FQuakeJiggers
@@ -130,9 +134,9 @@ class DEarthquake : public DThinker
 	HAS_OBJECT_POINTERS
 public:
 	static const int DEFAULT_STAT = STAT_EARTHQUAKE;
-	void Construct(AActor *center, int intensityX, int intensityY, int intensityZ, int duration,
+	void Construct(AActor *center, double intensityX, double intensityY, double intensityZ, int duration,
 		int damrad, int tremrad, FSoundID quakesfx, int flags, 
-		double waveSpeedX, double waveSpeedY, double waveSpeedZ, int falloff, int highpoint, double rollIntensity, double rollWave);
+		double waveSpeedX, double waveSpeedY, double waveSpeedZ, int falloff, int highpoint, double rollIntensity, double rollWave, double damageMultiplier, double thrustMultiplier, int damage);
 
 	void Serialize(FSerializer &arc);
 	void Tick ();
@@ -147,10 +151,13 @@ public:
 	double m_Falloff;
 	int m_Highpoint, m_MiniCount;
 	double m_RollIntensity, m_RollWave;
+	double m_DamageMultiplier, m_ThrustMultiplier;
+	int m_Damage;
 
 	double GetModIntensity(double intensity, bool fake = false) const;
 	double GetModWave(double ticFrac, double waveMultiplier) const;
-	double GetFalloff(double dist) const;
+	double GetFalloff(double dist, double radius) const;
+	void DoQuakeDamage(DEarthquake *quake, AActor *victim, bool falloff) const;
 
 	static int StaticGetQuakeIntensities(double ticFrac, AActor *viewer, FQuakeJiggers &jiggers);
 };

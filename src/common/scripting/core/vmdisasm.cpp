@@ -528,7 +528,7 @@ void VMDisasm(FILE *out, const VMOP *code, int codesize, const VMScriptFunction 
 			}
 			else if (code[i].op == OP_CALL_K && callfunc)
 			{
-				printf_wrapper(out, "  [%s]\n", callfunc->PrintableName.GetChars());
+				printf_wrapper(out, "  [%s]\n", callfunc->PrintableName);
 			}
 			else
 			{
@@ -639,6 +639,8 @@ static int print_reg(FILE *out, int col, int arg, int mode, int immshift, const 
 				return col+printf_wrapper(out, "v%d.2", regnum);
 			case REGT_FLOAT | REGT_MULTIREG3:
 				return col+printf_wrapper(out, "v%d.3", regnum);
+			case REGT_FLOAT | REGT_MULTIREG4:
+				return col+printf_wrapper(out, "v%d.4", regnum);
 			case REGT_INT | REGT_KONST:
 				return col+print_reg(out, 0, regnum, MODE_KI, 0, func);
 			case REGT_FLOAT | REGT_KONST:

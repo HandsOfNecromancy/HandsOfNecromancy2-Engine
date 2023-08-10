@@ -44,20 +44,31 @@
 #include <math.h>
 #include <float.h>
 #include <string.h>
+
+// this is needed to properly normalize angles. We cannot do that with compiler provided conversions because they differ too much
 #include "xs_Float.h"
-#include "math/cmath.h"
-
-
-#define EQUAL_EPSILON (1/65536.)
 
 // make this a local inline function to avoid any dependencies on other headers and not pollute the global namespace
 namespace pi
 {
 	inline constexpr double pi() { return 3.14159265358979323846; }
-	inline constexpr double pif() { return 3.14159265358979323846f; }
+	inline constexpr float pif() { return 3.14159265358979323846f; }
 }
 
+// optionally use reliable math routines if reproducability across hardware is important, but let this still compile without them.
+#if __has_include("math/cmath.h")
+#include "math/cmath.h"
+#else
+double g_cosdeg(double v) { return cos(v * (pi::pi() / 180.)); }
+double g_sindeg(double v) { return sin(v * (pi::pi() / 180.)); }
+double g_cos(double v) { return cos(v); }
+double g_sin(double v) { return sin(v); }
+double g_sqrt(double v) { return sqrt(v); }
+double g_atan2(double v, double w) { return atan2(v, w); }
+#endif
 
+
+#define EQUAL_EPSILON (1/65536.)
 
 template<class vec_t> struct TVector3;
 template<class vec_t> struct TRotator;
@@ -85,6 +96,11 @@ struct TVector2
 	TVector2(vec_t *o)
 		: X(o[0]), Y(o[1])
 	{
+	}
+
+	template<typename U>
+	explicit operator TVector2<U> () const noexcept {
+		return TVector2<U>(static_cast<U>(X), static_cast<U>(Y));
 	}
 
 	void Zero()
@@ -141,11 +157,13 @@ struct TVector2
 	}
 
 	// Scalar addition
+#if 0
 	TVector2 &operator+= (double scalar)
 	{
 		X += scalar, Y += scalar;
 		return *this;
 	}
+#endif
 
 	friend TVector2 operator+ (const TVector2 &v, vec_t scalar)
 	{
@@ -226,13 +244,19 @@ struct TVector2
 	// Vector length
 	vec_t Length() const
 	{
-		return (vec_t)g_sqrt (X*X + Y*Y);
+		return (vec_t)g_sqrt (LengthSquared());
 	}
 
 	vec_t LengthSquared() const
 	{
 		return X*X + Y*Y;
 	}
+	
+	double Sum() const
+	{
+		return abs(X) + abs(Y);
+	}
+
 
 	// Return a unit vector facing the same direction as this one
 	TVector2 Unit() const
@@ -261,9 +285,27 @@ struct TVector2
 		return *this;
 	}
 
+	TVector2 Resized(double len) const
+	{
+		double vlen = Length();
+		if (vlen != 0.)
+		{
+			double scale = len / vlen;
+			return{ vec_t(X * scale), vec_t(Y * scale) };
+		}
+		else
+		{
+			return *this;
+		}
+	}
 
 	// Dot product
 	vec_t operator | (const TVector2 &other) const
+	{
+		return X*other.X + Y*other.Y;
+	}
+
+	vec_t dot(const TVector2 &other) const
 	{
 		return X*other.X + Y*other.Y;
 	}
@@ -272,7 +314,7 @@ struct TVector2
 	TAngle<vec_t> Angle() const;
 
 	// Returns a rotated vector. angle is in degrees.
-	TVector2 Rotated (double angle)
+	TVector2 Rotated (double angle) const
 	{
 		double cosval = g_cosdeg (angle);
 		double sinval = g_sindeg (angle);
@@ -281,21 +323,27 @@ struct TVector2
 
 	// Returns a rotated vector. angle is in degrees.
 	template<class T>
-	TVector2 Rotated(TAngle<T> angle)
+	TVector2 Rotated(TAngle<T> angle) const
 	{
 		double cosval = angle.Cos();
 		double sinval = angle.Sin();
 		return TVector2(X*cosval - Y*sinval, Y*cosval + X*sinval);
 	}
 
+	// Returns a rotated vector. angle is in degrees.
+	TVector2 Rotated(const double cosval, const double sinval) const
+	{
+		return TVector2(X*cosval - Y*sinval, Y*cosval + X*sinval);
+	}
+
 	// Returns a vector rotated 90 degrees clockwise.
-	TVector2 Rotated90CW()
+	TVector2 Rotated90CW() const
 	{
 		return TVector2(Y, -X);
 	}
 
 	// Returns a vector rotated 90 degrees counterclockwise.
-	TVector2 Rotated90CCW()
+	TVector2 Rotated90CCW() const
 	{
 		return TVector2(-Y, X);
 	}
@@ -305,6 +353,8 @@ template<class vec_t>
 struct TVector3
 {
 	typedef TVector2<vec_t> Vector2;
+	// this does not compile - should be true on all relevant hardware.
+	//static_assert(myoffsetof(TVector3, X) == myoffsetof(Vector2, X) && myoffsetof(TVector3, Y) == myoffsetof(Vector2, Y), "TVector2 and TVector3 are not aligned");
 
 	vec_t X, Y, Z;
 
@@ -330,6 +380,11 @@ struct TVector3
 	}
 
 	TVector3 (const TRotator<vec_t> &rot);
+	
+	template<typename U>
+	explicit operator TVector3<U> () const noexcept {
+		return TVector3<U>(static_cast<U>(X), static_cast<U>(Y), static_cast<U>(Z));
+	}
 
 	void Zero()
 	{
@@ -339,6 +394,11 @@ struct TVector3
 	bool isZero() const
 	{
 		return X == 0 && Y == 0 && Z == 0;
+	}
+
+	TVector3 plusZ(double z) const
+	{
+		return { X, Y, Z + z };
 	}
 
 	TVector3 &operator= (const TVector3 &other) = default;
@@ -385,11 +445,13 @@ struct TVector3
 	}
 
 	// Scalar addition
+#if 0
 	TVector3 &operator+= (vec_t scalar)
 	{
 		X += scalar, Y += scalar, Z += scalar;
 		return *this;
 	}
+#endif
 
 	friend TVector3 operator+ (const TVector3 &v, vec_t scalar)
 	{
@@ -482,9 +544,14 @@ struct TVector3
 	}
 
 	// returns the XY fields as a 2D-vector.
-	Vector2 XY() const
+	const Vector2& XY() const
 	{
-		return{ X, Y };
+		return *reinterpret_cast<const Vector2*>(this);
+	}
+
+	Vector2& XY()
+	{
+		return *reinterpret_cast<Vector2*>(this);
 	}
 
 	// Add a 3D vector and a 2D vector.
@@ -513,7 +580,7 @@ struct TVector3
 	void GetRightUp(TVector3 &right, TVector3 &up)
 	{
 		TVector3 n(X, Y, Z);
-		TVector3 fn(fabs(n.X), fabs(n.Y), fabs(n.Z));
+		TVector3 fn((vec_t)fabs(n.X), (vec_t)fabs(n.Y), (vec_t)fabs(n.Z));
 		int major = 0;
 
 		if (fn[1] > fn[major]) major = 1;
@@ -553,7 +620,7 @@ struct TVector3
 		}
 
 		up = n ^right;
-		right.MakeUnit();;
+		right.MakeUnit();
 		up.MakeUnit();
 	}
 
@@ -565,13 +632,19 @@ struct TVector3
 	// Vector length
 	double Length() const
 	{
-		return g_sqrt (X*X + Y*Y + Z*Z);
+		return g_sqrt (LengthSquared());
 	}
 
 	double LengthSquared() const
 	{
 		return X*X + Y*Y + Z*Z;
 	}
+	
+	double Sum() const
+	{
+		return abs(X) + abs(Y) + abs(Z);
+	}
+
 
 	// Return a unit vector facing the same direction as this one
 	TVector3 Unit() const
@@ -603,7 +676,7 @@ struct TVector3
 		return *this;
 	}
 
-	TVector3 Resized(double len)
+	TVector3 Resized(double len) const
 	{
 		double vlen = Length();
 		if (vlen != 0.)
@@ -621,6 +694,11 @@ struct TVector3
 	vec_t operator | (const TVector3 &other) const
 	{
 		return X*other.X + Y*other.Y + Z*other.Z;
+	}
+
+	vec_t dot (const TVector3& other) const
+	{
+		return X * other.X + Y * other.Y + Z * other.Z;
 	}
 
 	// Cross product
@@ -641,6 +719,7 @@ struct TVector3
 template<class vec_t>
 struct TVector4
 {
+	typedef TVector2<vec_t> Vector2;
 	typedef TVector3<vec_t> Vector3;
 
 	vec_t X, Y, Z, W;
@@ -662,6 +741,16 @@ struct TVector4
 	TVector4(const Vector3 &xyz, vec_t w)
 		: X(xyz.X), Y(xyz.Y), Z(xyz.Z), W(w)
 	{
+	}
+
+	TVector4(const vec_t v[4])
+		: TVector4(v[0], v[1], v[2], v[3])
+	{
+	}
+
+	template<typename U>
+	explicit operator TVector4<U> () const noexcept {
+		return TVector4<U>(static_cast<U>(X), static_cast<U>(Y), static_cast<U>(Z), static_cast<U>(W));
 	}
 
 	void Zero()
@@ -698,6 +787,29 @@ struct TVector4
 	{
 		return X != other.X || Y != other.Y || Z != other.Z || W != other.W;
 	}
+
+	// returns the XY fields as a 2D-vector.
+	const Vector2& XY() const
+	{
+		return *reinterpret_cast<const Vector2*>(this);
+	}
+
+	Vector2& XY()
+	{
+		return *reinterpret_cast<Vector2*>(this);
+	}
+
+	// returns the XY fields as a 2D-vector.
+	const Vector3& XYZ() const
+	{
+		return *reinterpret_cast<const Vector3*>(this);
+	}
+
+	Vector3& XYZ()
+	{
+		return *reinterpret_cast<Vector3*>(this);
+	}
+
 
 	// Test for approximate equality
 	bool ApproximatelyEquals(const TVector4 &other) const
@@ -814,12 +926,6 @@ struct TVector4
 		return *this;
 	}
 
-	// returns the XYZ fields as a 3D-vector.
-	Vector3 XYZ() const
-	{
-		return{ X, Y, Z };
-	}
-
 	// Add a 4D vector and a 3D vector.
 	friend TVector4 operator+ (const TVector4 &v4, const Vector3 &v3)
 	{
@@ -846,13 +952,19 @@ struct TVector4
 	// Vector length
 	double Length() const
 	{
-		return g_sqrt(X*X + Y*Y + Z*Z + W*W);
+		return g_sqrt(LengthSquared());
 	}
 
 	double LengthSquared() const
 	{
 		return X*X + Y*Y + Z*Z + W*W;
 	}
+	
+	double Sum() const
+	{
+		return abs(X) + abs(Y) + abs(Z) + abs(W);
+	}
+	
 
 	// Return a unit vector facing the same direction as this one
 	TVector4 Unit() const
@@ -885,7 +997,7 @@ struct TVector4
 		return *this;
 	}
 
-	TVector4 Resized(double len)
+	TVector4 Resized(double len) const 
 	{
 		double vlen = Length();
 		if (vlen != 0.)
@@ -904,6 +1016,11 @@ struct TVector4
 	{
 		return X*other.X + Y*other.Y + Z*other.Z + W*other.W;
 	}
+
+	vec_t dot(const TVector4 &other) const
+	{
+		return X*other.X + Y*other.Y + Z*other.Z + W*other.W;
+	}
 };
 
 template<class vec_t>
@@ -915,6 +1032,7 @@ struct TMatrix3x3
 
 	TMatrix3x3() = default;
 	TMatrix3x3(const TMatrix3x3 &other) = default;
+	TMatrix3x3& operator=(const TMatrix3x3& other) = default;
 
 	TMatrix3x3(const Vector3 &row1, const Vector3 &row2, const Vector3 &row3)
 	{
@@ -1134,7 +1252,7 @@ Outside comments: A faster version with only 10 (not 24) multiplies.
 template<class vec_t>
 struct TAngle
 {
-	vec_t Degrees;
+	vec_t Degrees_;
 
 	// This is to catch any accidental attempt to assign an angle_t to this type. Any explicit exception will require a type cast.
 	TAngle(int) = delete;
@@ -1148,180 +1266,156 @@ struct TAngle
 
 	TAngle() = default;
 
-	TAngle (vec_t amt)
-		: Degrees(amt)
+private:
+	// Both constructors are needed to avoid unnecessary conversions when assigning to FAngle.
+	constexpr TAngle (float amt)
+		: Degrees_((vec_t)amt)
 	{
+	}
+	constexpr TAngle (double amt)
+		: Degrees_((vec_t)amt)
+	{
+	}
+public:
+
+	vec_t& Degrees__() { return Degrees_; }
+	
+	static constexpr TAngle fromDeg(float deg)
+	{
+		return TAngle(deg);
+	}
+	static constexpr TAngle fromDeg(double deg)
+	{
+		return TAngle(deg);
+	}
+	static constexpr TAngle fromDeg(int deg)
+	{
+		return TAngle((vec_t)deg);
+	}
+	static constexpr TAngle fromDeg(unsigned deg)
+	{
+		return TAngle((vec_t)deg);
+	}
+
+	static constexpr TAngle fromRad(float rad)
+	{
+		return TAngle(float(rad * (180.0f / pi::pif())));
+	}
+	static constexpr TAngle fromRad(double rad)
+	{
+		return TAngle(double(rad * (180.0 / pi::pi())));
+	}
+
+	static constexpr TAngle fromBam(int f)
+	{
+		return TAngle(f * (90. / 0x40000000));
+	}
+	static constexpr TAngle fromBam(unsigned f)
+	{
+		return TAngle(f * (90. / 0x40000000));
+	}
+
+	static constexpr TAngle fromBuild(double bang)
+	{
+		return TAngle(bang * (90. / 512));
+	}
+
+	static constexpr TAngle fromQ16(int bang)
+	{
+		return TAngle(bang * (90. / 16384));
 	}
 
 	TAngle(const TAngle &other) = default;
 	TAngle &operator= (const TAngle &other) = default;
 
-	TAngle &operator= (double other)
+	constexpr TAngle operator- () const
 	{
-		Degrees = (decltype(Degrees))other;
+		return TAngle(-Degrees_);
+	}
+
+	constexpr TAngle &operator+= (TAngle other)
+	{
+		Degrees_ += other.Degrees_;
 		return *this;
 	}
 
-	// intentionally disabled so that common math functions cannot be accidentally called with a TAngle.
-	//operator vec_t() const { return Degrees; }
-
-	TAngle operator- () const
+	constexpr TAngle &operator-= (TAngle other)
 	{
-		return TAngle(-Degrees);
-	}
-
-	TAngle &operator+= (TAngle other)
-	{
-		Degrees += other.Degrees;
+		Degrees_ -= other.Degrees_;
 		return *this;
 	}
 
-	TAngle &operator-= (TAngle other)
+	constexpr TAngle operator+ (TAngle other) const
 	{
-		Degrees -= other.Degrees;
+		return Degrees_ + other.Degrees_;
+	}
+
+	constexpr TAngle operator- (TAngle other) const
+	{
+		return Degrees_ - other.Degrees_;
+	}
+
+	constexpr TAngle &operator*= (vec_t other)
+	{
+		Degrees_ = Degrees_ * other;
 		return *this;
 	}
 
-	TAngle &operator*= (TAngle other)
+	constexpr TAngle &operator/= (vec_t other)
 	{
-		Degrees *= other.Degrees;
+		Degrees_ = Degrees_ / other;
 		return *this;
 	}
 
-	TAngle &operator/= (TAngle other)
+	constexpr TAngle operator* (vec_t other) const
 	{
-		Degrees /= other.Degrees;
-		return *this;
+		return Degrees_ * other;
 	}
 
-	TAngle operator+ (TAngle other) const
+	constexpr TAngle operator* (TAngle other) const
 	{
-		return Degrees + other.Degrees;
+		return Degrees_ * other.Degrees_;
 	}
 
-	TAngle operator- (TAngle other) const
+	constexpr TAngle operator/ (vec_t other) const
 	{
-		return Degrees - other.Degrees;
+		return Degrees_ / other;
 	}
 
-	TAngle operator* (TAngle other) const
+	constexpr double operator/ (TAngle other) const
 	{
-		return Degrees * other.Degrees;
-	}
-
-	TAngle operator/ (TAngle other) const
-	{
-		return Degrees / other.Degrees;
-	}
-
-	TAngle &operator+= (vec_t other)
-	{
-		Degrees = Degrees + other;
-		return *this;
-	}
-
-	TAngle &operator-= (vec_t other)
-	{
-		Degrees = Degrees - other;
-		return *this;
-	}
-
-	TAngle &operator*= (vec_t other)
-	{
-		Degrees = Degrees * other;
-		return *this;
-	}
-
-	TAngle &operator/= (vec_t other)
-	{
-		Degrees = Degrees / other;
-		return *this;
-	}
-
-	TAngle operator+ (vec_t other) const
-	{
-		return Degrees + other;
-	}
-
-	TAngle operator- (vec_t other) const
-	{
-		return Degrees - other;
-	}
-
-	friend TAngle operator- (vec_t o1, TAngle o2)
-	{
-		return TAngle(o1 - o2.Degrees);
-	}
-
-	TAngle operator* (vec_t other) const
-	{
-		return Degrees * other;
-	}
-
-	TAngle operator/ (vec_t other) const
-	{
-		return Degrees / other;
+		return Degrees_ / other.Degrees_;
 	}
 
 	// Should the comparisons consider an epsilon value?
-	bool operator< (TAngle other) const
+	constexpr bool operator< (TAngle other) const
 	{
-		return Degrees < other.Degrees;
+		return Degrees_ < other.Degrees_;
 	}
 
-	bool operator> (TAngle other) const
+	constexpr bool operator> (TAngle other) const
 	{
-		return Degrees > other.Degrees;
+		return Degrees_ > other.Degrees_;
 	}
 
-	bool operator<= (TAngle other) const
+	constexpr bool operator<= (TAngle other) const
 	{
-		return Degrees <= other.Degrees;
+		return Degrees_ <= other.Degrees_;
 	}
 
-	bool operator>= (TAngle other) const
+	constexpr bool operator>= (TAngle other) const
 	{
-		return Degrees >= other.Degrees;
+		return Degrees_ >= other.Degrees_;
 	}
 
-	bool operator== (TAngle other) const
+	constexpr bool operator== (TAngle other) const
 	{
-		return Degrees == other.Degrees;
+		return Degrees_ == other.Degrees_;
 	}
 
-	bool operator!= (TAngle other) const
+	constexpr bool operator!= (TAngle other) const
 	{
-		return Degrees != other.Degrees;
-	}
-
-	bool operator< (vec_t other) const
-	{
-		return Degrees < other;
-	}
-
-	bool operator> (vec_t other) const
-	{
-		return Degrees > other;
-	}
-
-	bool operator<= (vec_t other) const
-	{
-		return Degrees <= other;
-	}
-
-	bool operator>= (vec_t other) const
-	{
-		return Degrees >= other;
-	}
-
-	bool operator== (vec_t other) const
-	{
-		return Degrees == other;
-	}
-
-	bool operator!= (vec_t other) const
-	{
-		return Degrees != other;
+		return Degrees_ != other.Degrees_;
 	}
 
 	// Ensure the angle is between [0.0,360.0) degrees
@@ -1338,14 +1432,29 @@ struct TAngle
 		return (vec_t)(BAM_FACTOR * (signed int)BAMs());
 	}
 
-	vec_t Radians() const
+	constexpr vec_t Radians() const
 	{
-		return vec_t(Degrees * (pi::pi() / 180.0));
+		return vec_t(Degrees_ * (pi::pi() / 180.0));
 	}
 
 	unsigned BAMs() const
 	{
-		return xs_CRoundToInt(Degrees * (0x40000000 / 90.));
+		return xs_CRoundToInt(Degrees_ * (0x40000000 / 90.));
+	}
+
+	constexpr vec_t Degrees() const
+	{
+		return Degrees_;
+	}
+
+	constexpr int Buildang() const
+	{
+		return int(Degrees_ * (512 / 90.0));
+	}
+
+	constexpr int Q16() const
+	{
+		return int(Degrees_ * (16384 / 90.0));
 	}
 
 	TVector2<vec_t> ToVector(vec_t length = 1) const
@@ -1355,17 +1464,23 @@ struct TAngle
 
 	vec_t Cos() const
 	{
-		return vec_t(g_cosdeg(Degrees));
+		return vec_t(g_cosdeg(Degrees_));
 	}
 
 	vec_t Sin() const
 	{
-		return vec_t(g_sindeg(Degrees));
+		return vec_t(g_sindeg(Degrees_));
 	}
 
 	double Tan() const
 	{
-		return vec_t(g_tan(Radians()));
+		// use an optimized approach if we have a sine table. If not just call the CRT's tan function.
+#if __has_include("math/cmath.h")
+		const auto bam = BAMs();
+		return g_sinbam(bam) / g_cosbam(bam);
+#else
+		return vec_t(tan(Radians()));
+#endif
 	}
 
 	// This is for calculating vertical velocity. For high pitches the tangent will become too large to be useful.
@@ -1374,23 +1489,24 @@ struct TAngle
 		return clamp(Tan(), -max, max);
 	}
 
-	static inline TAngle ToDegrees(double rad)
+	// returns sign of the NORMALIZED angle.
+	int Sgn() const
 	{
-		return TAngle(double(rad * (180.0 / pi::pi())));
+		auto val = int(BAMs());
+		return (val > 0) - (val < 0);
 	}
-
 };
-
-// Emulates the old floatbob offset table with direct calls to trig functions.
-inline double BobSin(double fb)
-{
-	return TAngle<double>(double(fb * (180.0 / 32))).Sin() * 8;
-}
 
 template<class T>
 inline TAngle<T> fabs (const TAngle<T> &deg)
 {
-	return TAngle<T>(fabs(deg.Degrees));
+	return TAngle<T>::fromDeg(fabs(deg.Degrees()));
+}
+
+template<class T>
+inline TAngle<T> abs (const TAngle<T> &deg)
+{
+	return TAngle<T>::fromDeg(fabs(deg.Degrees()));
 }
 
 template<class T>
@@ -1400,44 +1516,26 @@ inline TAngle<T> deltaangle(const TAngle<T> &a1, const TAngle<T> &a2)
 }
 
 template<class T>
-inline TAngle<T> deltaangle(const TAngle<T> &a1, double a2)
-{
-	return (a2 - a1).Normalized180();
-}
-
-template<class T>
-inline TAngle<T> deltaangle(double a1, const TAngle<T> &a2)
-{
-	return (a2 - a1).Normalized180();
-}
-
-template<class T>
 inline TAngle<T> absangle(const TAngle<T> &a1, const TAngle<T> &a2)
 {
-	return fabs((a1 - a2).Normalized180());
-}
-
-template<class T>
-inline TAngle<T> absangle(const TAngle<T> &a1, double a2)
-{
-	return fabs((a1 - a2).Normalized180());
+	return fabs(deltaangle(a2, a1));
 }
 
 inline TAngle<double> VecToAngle(double x, double y)
 {
-	return g_atan2(y, x) * (180.0 / pi::pi());
+	return TAngle<double>::fromRad(g_atan2(y, x));
 }
 
 template<class T>
 inline TAngle<T> VecToAngle (const TVector2<T> &vec)
 {
-	return (T)g_atan2(vec.Y, vec.X) * (180.0 / pi::pi());
+	return TAngle<T>::fromRad(g_atan2(vec.Y, vec.X));
 }
 
 template<class T>
 inline TAngle<T> VecToAngle (const TVector3<T> &vec)
 {
-	return (T)g_atan2(vec.Y, vec.X) * (180.0 / pi::pi());
+	return TAngle<T>::fromRad(g_atan2(vec.Y, vec.X));
 }
 
 template<class T>
@@ -1455,7 +1553,35 @@ TAngle<T> TVector3<T>::Angle() const
 template<class T>
 TAngle<T> TVector3<T>::Pitch() const
 {
-	return -VecToAngle(TVector2<T>(X, Y).Length(), Z);
+	return -VecToAngle(XY().Length(), Z);
+}
+
+template<class T>
+inline TVector2<T> clamp(const TVector2<T> &vec, const TVector2<T> &min, const TVector2<T> &max)
+{
+	return TVector2<T>(clamp(vec.X, min.X, max.X), clamp(vec.Y, min.Y, max.Y));
+}
+
+template<class T>
+inline TAngle<T> interpolatedvalue(const TAngle<T> &oang, const TAngle<T> &ang, const double interpfrac)
+{
+	return oang + (deltaangle(oang, ang) * interpfrac);
+}
+
+template<class T>
+inline TRotator<T> interpolatedvalue(const TRotator<T> &oang, const TRotator<T> &ang, const double interpfrac)
+{
+	return TRotator<T>(
+		interpolatedvalue(oang.Pitch, ang.Pitch, interpfrac),
+		interpolatedvalue(oang.Yaw, ang.Yaw, interpfrac),
+		interpolatedvalue(oang.Roll, ang.Roll, interpfrac)
+	);
+}
+
+template <class T>
+inline T interpolatedvalue(const T& oval, const T& val, const double interpfrac)
+{
+	return T(oval + (val - oval) * interpfrac);
 }
 
 // Much of this is copied from TVector3. Is all that functionality really appropriate?
@@ -1467,7 +1593,6 @@ struct TRotator
 	Angle Pitch;	// up/down
 	Angle Yaw;		// left/right
 	Angle Roll;		// rotation about the forward axis.
-	Angle CamRoll;	// Roll specific to actor cameras. Used by quakes.
 
 	TRotator() = default;
 
@@ -1557,14 +1682,14 @@ struct TRotator
 	// Scalar division
 	TRotator &operator/= (const Angle &scalar)
 	{
-		Angle mul(1 / scalar.Degrees);
-		Pitch *= scalar, Yaw *= scalar, Roll *= scalar;
+		Angle mul(1 / scalar.Degrees_);
+		Pitch *= mul, Yaw *= mul, Roll *= mul;
 		return *this;
 	}
 
 	TRotator operator/ (const Angle &scalar) const
 	{
-		Angle mul(1 / scalar.Degrees);
+		Angle mul(1 / scalar.Degrees_);
 		return TRotator(Pitch * mul, Yaw * mul, Roll * mul);
 	}
 
@@ -1594,13 +1719,10 @@ struct TRotator
 };
 
 // Create a forward vector from a rotation (ignoring roll)
-
 template<class T>
 inline TVector3<T>::TVector3 (const TRotator<T> &rot)
 {
-	double pcos = rot.Pitch.Cos();
-	X = pcos * rot.Yaw.Cos();
-	Y = pcos * rot.Yaw.Sin();
+	XY() = rot.Pitch.Cos() * rot.Yaw.ToVector();
 	Z = rot.Pitch.Sin();
 }
 
@@ -1626,7 +1748,6 @@ inline TMatrix3x3<T>::TMatrix3x3(const TVector3<T> &axis, TAngle<T> degrees)
 	Cells[2][2] = T(     (t-txx-tyy) + c  );
 }
 
-
 typedef TVector2<float>		FVector2;
 typedef TVector3<float>		FVector3;
 typedef TVector4<float>		FVector4;
@@ -1641,6 +1762,19 @@ typedef TRotator<double>		DRotator;
 typedef TMatrix3x3<double>		DMatrix3x3;
 typedef TAngle<double>			DAngle;
 
+constexpr DAngle nullAngle = DAngle::fromDeg(0.);
+constexpr DAngle minAngle = DAngle::fromDeg(1. / 65536.);
+constexpr FAngle nullFAngle = FAngle::fromDeg(0.);
+
+constexpr DAngle DAngle1 = DAngle::fromDeg(1);
+constexpr DAngle DAngle15 = DAngle::fromDeg(15);
+constexpr DAngle DAngle22_5 = DAngle::fromDeg(22.5);
+constexpr DAngle DAngle45 = DAngle::fromDeg(45);
+constexpr DAngle DAngle60 = DAngle::fromDeg(60);
+constexpr DAngle DAngle90 = DAngle::fromDeg(90);
+constexpr DAngle DAngle180 = DAngle::fromDeg(180);
+constexpr DAngle DAngle270 = DAngle::fromDeg(270);
+constexpr DAngle DAngle360 = DAngle::fromDeg(360);
 
 class Plane
 {
@@ -1689,6 +1823,5 @@ protected:
 	FVector3 m_normal;
 	float m_d;
 };
-
 
 #endif

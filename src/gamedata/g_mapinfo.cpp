@@ -274,6 +274,8 @@ void level_info_t::Reset()
 	Translator = "";
 	RedirectType = NAME_None;
 	RedirectMapName = "";
+	RedirectCVAR = NAME_None;
+	RedirectCVARMapName = "";
 	EnterPic = "";
 	ExitPic = "";
 	Intermission = NAME_None;
@@ -302,7 +304,8 @@ void level_info_t::Reset()
 	lightadditivesurfaces = -1;
 	skyrotatevector = FVector3(0, 0, 1);
 	skyrotatevector2 = FVector3(0, 0, 1);
-
+	lightblendmode = ELightBlendMode::DEFAULT;
+	tonemap = ETonemapMode::None;
 }
 
 
@@ -385,6 +388,29 @@ level_info_t *level_info_t::CheckLevelRedirect ()
 					break;
 				}
 			}
+		}
+	}
+	if (RedirectCVAR != NAME_None)
+	{
+		auto var = FindCVar(RedirectCVAR.GetChars(), NULL);
+		if (var && (var->GetRealType() == CVAR_Bool) && !(var->GetFlags() & CVAR_IGNORE))	// only check Bool cvars that are currently defined
+		{
+			if (var->GetFlags() & CVAR_USERINFO)
+			{
+				// user sync'd cvar, check for all players
+				for (int i = 0; i < MAXPLAYERS; ++i)
+				{
+					if (playeringame[i] && (var = GetCVar(i, RedirectCVAR.GetChars())))
+					{
+						if (var->ToInt())
+							if (P_CheckMapData(RedirectCVARMapName))
+								return FindLevelInfo(RedirectCVARMapName);
+					}
+				}
+			}
+			else if (var->ToInt())
+				if (P_CheckMapData(RedirectCVARMapName))
+					return FindLevelInfo(RedirectCVARMapName);
 		}
 	}
 	return NULL;
@@ -1242,8 +1268,8 @@ DEFINE_MAP_OPTION(PrecacheSounds, true)
 	do
 	{
 		parse.sc.MustGetString();
-		FSoundID snd = parse.sc.String;
-		if (snd == 0)
+		FSoundID snd = S_FindSound(parse.sc.String);
+		if (snd == NO_SOUND)
 		{
 			parse.sc.ScriptMessage("Unknown sound \"%s\"", parse.sc.String);
 		}
@@ -1296,6 +1322,15 @@ DEFINE_MAP_OPTION(redirect, true)
 	info->RedirectType = parse.sc.String;
 	parse.ParseComma();
 	parse.ParseNextMap(info->RedirectMapName);
+}
+
+DEFINE_MAP_OPTION(cvar_redirect, true)
+{
+	parse.ParseAssign();
+	parse.sc.MustGetString();
+	info->RedirectCVAR = parse.sc.String;
+	parse.ParseComma();
+	parse.ParseNextMap(info->RedirectCVARMapName);
 }
 
 DEFINE_MAP_OPTION(sndseq, true)
@@ -1486,13 +1521,65 @@ DEFINE_MAP_OPTION(lightmode, false)
 	parse.ParseAssign();
 	parse.sc.MustGetNumber();
 
-	if ((parse.sc.Number >= 0 && parse.sc.Number <= 4) || parse.sc.Number == 8 || parse.sc.Number == 16)
+	if (parse.sc.Number == 8 || parse.sc.Number == 16) info->lightmode = ELightMode::NotSet;
+	else if (parse.sc.Number >= 0 && parse.sc.Number <= 5)
 	{
 		info->lightmode = ELightMode(parse.sc.Number);
 	}
 	else
 	{
 		parse.sc.ScriptMessage("Invalid light mode %d", parse.sc.Number);
+	}
+}
+
+DEFINE_MAP_OPTION(lightblendmode, false)
+{
+	parse.ParseAssign();
+	parse.sc.MustGetString();
+
+	if (parse.sc.Compare("Default") || parse.sc.Compare("Clamp"))
+	{
+		info->lightblendmode = ELightBlendMode::DEFAULT;
+	}
+	else if (parse.sc.Compare("ColoredClamp"))
+	{
+		info->lightblendmode = ELightBlendMode::CLAMP_COLOR;
+	}
+	else if (parse.sc.Compare("Unclamped"))
+	{
+		info->lightblendmode = ELightBlendMode::NOCLAMP;
+		if(parse.sc.CheckString(","))
+		{
+			parse.sc.MustGetString();
+			if (parse.sc.Compare("None"))
+			{
+				info->tonemap = ETonemapMode::None;
+			}
+			else if (parse.sc.Compare("Linear"))
+			{
+				info->tonemap = ETonemapMode::Linear;
+			}
+			else if (parse.sc.Compare("Uncharted2"))
+			{
+				info->tonemap = ETonemapMode::Uncharted2;
+			}
+			else if (parse.sc.Compare("HejlDawson"))
+			{
+				info->tonemap = ETonemapMode::HejlDawson;
+			}
+			else if (parse.sc.Compare("Reinhard"))
+			{
+				info->tonemap = ETonemapMode::Reinhard;
+			}
+			else
+			{
+				parse.sc.ScriptMessage("Invalid tonemap %s", parse.sc.String);
+			}
+		}
+	}
+	else
+	{
+		parse.sc.ScriptMessage("Invalid light blend mode %s", parse.sc.String);
 	}
 }
 
@@ -1765,6 +1852,7 @@ MapFlagHandlers[] =
 	{ "compat_avoidhazards",			MITYPE_COMPATFLAG, 0, COMPATF2_AVOID_HAZARDS },
 	{ "compat_stayonlift",				MITYPE_COMPATFLAG, 0, COMPATF2_STAYONLIFT },
 	{ "compat_nombf21",					MITYPE_COMPATFLAG, 0, COMPATF2_NOMBF21 },
+	{ "compat_voodoozombies",			MITYPE_COMPATFLAG, 0, COMPATF2_VOODOO_ZOMBIES },
 	{ "cd_start_track",					MITYPE_EATNEXT,	0, 0 },
 	{ "cd_end1_track",					MITYPE_EATNEXT,	0, 0 },
 	{ "cd_end2_track",					MITYPE_EATNEXT,	0, 0 },
@@ -2331,9 +2419,11 @@ void FMapInfoParser::ParseMapInfo (int lump, level_info_t &gamedefaults, level_i
 						fileSystem.GetResourceFileFullName(fileSystem.GetFileContainer(inclump)), sc.String);
 				}
 			}
-			FScanner saved_sc = sc;
-			ParseMapInfo(inclump, gamedefaults, defaultinfo);
-			sc = saved_sc;
+			// use a new parser object to parse the include. Otherwise we'd have to save the entire FScanner in a local variable which is a lot more messy.
+			FMapInfoParser includer(&sc);
+			includer.format_type = format_type;
+			includer.HexenHack = HexenHack;
+			includer.ParseMapInfo(inclump, gamedefaults, defaultinfo);
 		}
 		else if (sc.Compare("gamedefaults"))
 		{

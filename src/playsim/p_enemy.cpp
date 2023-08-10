@@ -50,6 +50,7 @@
 #include "vm.h"
 #include "actorinlines.h"
 #include "a_ceiling.h"
+#include "shadowinlines.h"
 
 #include "gi.h"
 
@@ -61,8 +62,8 @@ static FRandom pr_lookformonsters ("LookForMonsters");
 static FRandom pr_lookforplayers ("LookForPlayers");
 static FRandom pr_scaredycat ("Anubis");
 	   FRandom pr_chase ("Chase");
-static FRandom pr_facetarget ("FaceTarget");
-static FRandom pr_railface ("RailFace");
+	   FRandom pr_facetarget ("FaceTarget");
+	   FRandom pr_railface ("RailFace");
 static FRandom pr_look2 ("LookyLooky");
 static FRandom pr_look3 ("IGotHooky");
 static FRandom pr_slook ("SlooK");
@@ -268,10 +269,10 @@ int P_CheckMeleeRange (AActor* actor, double range)
 	AActor *pl = actor->target;
 
 	double dist;
-		
-	if (!pl || (actor->Sector->Flags & SECF_NOATTACK))
+	
+	if (!pl)
 		return false;
-				
+
 	dist = actor->Distance2D (pl);
 	if (range < 0) range = actor->meleerange;
 
@@ -281,6 +282,9 @@ int P_CheckMeleeRange (AActor* actor, double range)
 	// [RH] If moving toward goal, then we've reached it.
 	if (pl == actor->goal)
 		return true;
+
+	if (actor->Sector->Flags & SECF_NOATTACK)
+		return false;
 
 	// [RH] Don't melee things too far above or below actor.
 	if (!(actor->flags5 & MF5_NOVERTICALMELEERANGE))
@@ -401,7 +405,7 @@ int P_HitFriend(AActor * self)
 	{
 		DAngle angle = self->AngleTo(self->target);
 		double dist = self->Distance2D(self->target);
-		P_AimLineAttack (self, angle, dist, &t, 0., true);
+		P_AimLineAttack (self, angle, dist, &t, nullAngle, true);
 		if (t.linetarget != NULL && t.linetarget != self->target)
 		{
 			return self->IsFriend (t.linetarget);
@@ -595,7 +599,7 @@ static int P_Move (AActor *actor)
 		{
 			DAngle anglediff = deltaangle(oldangle, actor->Angles.Yaw);
 
-			if (anglediff != 0)
+			if (anglediff != nullAngle)
 			{
 				move = move.Rotated(anglediff);
 				oldangle = actor->Angles.Yaw;
@@ -994,7 +998,7 @@ void P_NewChaseDir(AActor * actor)
 				}
 				else if (front == actor->Z() && back < actor->Z() - actor->MaxDropOffHeight)
 				{
-					angle = line->Delta().Angle() + 180.; // back side dropoff
+					angle = line->Delta().Angle() + DAngle::fromDeg(180.); // back side dropoff
 				}
 				else continue;
 		
@@ -1249,7 +1253,7 @@ int P_IsVisible(AActor *lookee, AActor *other, INTBOOL allaround, FLookExParams 
 	double mindist;
 	DAngle fov;
 
-	if (other == nullptr)
+	if (other == nullptr || (other->flags8 & MF8_MVISBLOCKED))
 	{
 		return false;
 	}
@@ -1263,7 +1267,7 @@ int P_IsVisible(AActor *lookee, AActor *other, INTBOOL allaround, FLookExParams 
 	else
 	{
 		mindist = maxdist = 0;
-		fov = allaround ? 0. : 180.;
+		fov = DAngle::fromDeg(allaround ? 0. : 180.);
 	}
 
 	double dist = lookee->Distance2D (other);
@@ -1274,7 +1278,7 @@ int P_IsVisible(AActor *lookee, AActor *other, INTBOOL allaround, FLookExParams 
 	if (mindist && dist < mindist)
 		return false;			// [KS] too close
 
-	if (fov != 0)
+	if (fov != nullAngle)
 	{
 		DAngle an = absangle(lookee->AngleTo(other), lookee->Angles.Yaw);
 
@@ -1960,7 +1964,7 @@ DEFINE_ACTION_FUNCTION(AActor, A_Look)
 		if (self->reactiontime > self->Level->maptime)
 			self->target = nullptr;
 	}
-	else if (self->SeeSound)
+	else if (self->SeeSound.isvalid())
 	{
 		if ((self->flags2 & MF2_BOSS) || (self->flags8 & MF8_FULLVOLSEE))
 		{ // full volume
@@ -1999,7 +2003,7 @@ DEFINE_ACTION_FUNCTION(AActor, A_LookEx)
 
 	AActor *targ = NULL; // Shuts up gcc
 	double dist;
-	if (fov == 0) fov = 180.;
+	if (fov == nullAngle) fov = DAngle::fromDeg(180.);
 	FLookExParams params = { fov, minseedist, maxseedist, maxheardist, flags, seestate };
 
 	if (self->flags5 & MF5_INCONVERSATION)
@@ -2142,7 +2146,7 @@ DEFINE_ACTION_FUNCTION(AActor, A_LookEx)
 		if (self->reactiontime > self->Level->maptime)
 			self->target = nullptr;
 	}
-	else if (self->SeeSound && !(flags & LOF_NOSEESOUND))
+	else if (self->SeeSound.isvalid() && !(flags & LOF_NOSEESOUND))
 	{
 		if (flags & LOF_FULLVOLSEESOUND)
 		{ // full volume
@@ -2203,6 +2207,7 @@ enum ChaseFlags
 	CHF_NOPOSTATTACKTURN = 128,
 	CHF_STOPIFBLOCKED = 256,
 	CHF_DONTIDLE = 512,
+	CHF_DONTLOOKALLAROUND = 1024,
 };
 
 void A_Wander(AActor *self, int flags)
@@ -2226,15 +2231,15 @@ void A_Wander(AActor *self, int flags)
 	// turn towards movement direction if not there yet
 	if (!(flags & CHF_NODIRECTIONTURN) && (self->movedir < DI_NODIR))
 	{
-		self->Angles.Yaw = floor(self->Angles.Yaw.Degrees / 45) * 45.;
-		DAngle delta = deltaangle(self->Angles.Yaw, (self->movedir * 45));
-		if (delta < 0)
+		self->Angles.Yaw = DAngle::fromDeg(floor(self->Angles.Yaw.Degrees() / 45) * 45.);
+		DAngle delta = deltaangle(self->Angles.Yaw, DAngle::fromDeg(self->movedir * 45));
+		if (delta < nullAngle)
 		{
-			self->Angles.Yaw -= 45;
+			self->Angles.Yaw -= DAngle::fromDeg(45);
 		}
-		else if (delta > 0)
+		else if (delta > nullAngle)
 		{
-			self->Angles.Yaw += 45;
+			self->Angles.Yaw += DAngle::fromDeg(45);
 		}
 	}
 
@@ -2341,7 +2346,7 @@ void A_DoChase (AActor *actor, bool fastchase, FState *meleestate, FState *missi
 
 	// [RH] Don't chase invisible targets
 	if (actor->target != NULL &&
-		actor->target->renderflags & RF_INVISIBLE &&
+		((actor->target->renderflags & RF_INVISIBLE) || (actor->target->flags8 & MF8_MINVISIBLE)) &&
 		actor->target != actor->goal)
 	{
 		actor->target = nullptr;
@@ -2379,15 +2384,15 @@ void A_DoChase (AActor *actor, bool fastchase, FState *meleestate, FState *missi
 	}
 	else if (!(flags & CHF_NODIRECTIONTURN) && actor->movedir < 8)
 	{
-		actor->Angles.Yaw = floor(actor->Angles.Yaw.Degrees / 45) * 45.;
-		DAngle delta = deltaangle(actor->Angles.Yaw, (actor->movedir * 45));
-		if (delta < 0)
+		actor->Angles.Yaw = DAngle::fromDeg(floor(actor->Angles.Yaw.Degrees() / 45) * 45.);
+		DAngle delta = deltaangle(actor->Angles.Yaw, DAngle::fromDeg(actor->movedir * 45));
+		if (delta < nullAngle)
 		{
-			actor->Angles.Yaw -= 45;
+			actor->Angles.Yaw -= DAngle::fromDeg(45);
 		}
-		else if (delta > 0)
+		else if (delta > nullAngle)
 		{
-			actor->Angles.Yaw += 45;
+			actor->Angles.Yaw += DAngle::fromDeg(45);
 		}
 	}
 
@@ -2437,7 +2442,7 @@ void A_DoChase (AActor *actor, bool fastchase, FState *meleestate, FState *missi
 			// hurt our old one temporarily.
 			actor->threshold = 0;
 		}
-		if (P_LookForPlayers (actor, true, NULL) && actor->target != actor->goal)
+		if (P_LookForPlayers (actor, !(flags & CHF_DONTLOOKALLAROUND), NULL) && actor->target != actor->goal)
 		{ // got a new target
 			actor->flags7 &= ~MF7_INCHASE;
 			return;
@@ -2552,8 +2557,8 @@ void A_DoChase (AActor *actor, bool fastchase, FState *meleestate, FState *missi
 				if (pr_chase() < 100)
 				{
 					DAngle ang = actor->AngleTo(actor->target);
-					if (pr_chase() < 128) ang += 90.;
-					else ang -= 90.;
+					if (pr_chase() < 128) ang += DAngle::fromDeg(90.);
+					else ang -= DAngle::fromDeg(90.);
 					actor->VelFromAngle(13., ang);
 					actor->FastChaseStrafeCount = 3;		// strafe time
 				}
@@ -2571,7 +2576,7 @@ void A_DoChase (AActor *actor, bool fastchase, FState *meleestate, FState *missi
 		// check for melee attack
 		if (meleestate && P_CheckMeleeRange(actor))
 		{
-			if (actor->AttackSound)
+			if (actor->AttackSound.isvalid())
 				S_Sound (actor, CHAN_WEAPON, 0, actor->AttackSound, 1, ATTN_NORM);
 
 			actor->SetState (meleestate);
@@ -2612,7 +2617,7 @@ void A_DoChase (AActor *actor, bool fastchase, FState *meleestate, FState *missi
 			lookForBetter = true;
 		}
 		AActor * oldtarget = actor->target;
-		gotNew = P_LookForPlayers (actor, true, NULL);
+		gotNew = P_LookForPlayers (actor, !(flags & CHF_DONTLOOKALLAROUND), NULL);
 		if (lookForBetter)
 		{
 			actor->flags3 |= MF3_NOSIGHTCHECK;
@@ -2732,7 +2737,7 @@ bool P_CanResurrect(AActor *raiser, AActor *thing)
 //
 //==========================================================================
 
-bool P_CheckForResurrection(AActor* self, bool usevilestates, FState* state = nullptr, FSoundID sound = 0)
+bool P_CheckForResurrection(AActor* self, bool usevilestates, FState* state = nullptr, FSoundID sound = NO_SOUND)
 {
 	const AActor *info;
 	AActor *temp;
@@ -2833,7 +2838,7 @@ bool P_CheckForResurrection(AActor* self, bool usevilestates, FState* state = nu
 						self->SetState(archvile->FindState(NAME_Heal));
 					}
 				}
-				if (sound == 0) sound = "vile/raise";
+				if (sound == NO_SOUND) sound = S_FindSound("vile/raise");
 				S_Sound(corpsehit, CHAN_BODY, 0, sound, 1, ATTN_IDLE);
 				info = corpsehit->GetDefault();
 
@@ -2944,9 +2949,9 @@ void A_Face(AActor *self, AActor *other, DAngle max_turn, DAngle max_pitch, DAng
 
 	// 0 means no limit. Also, if we turn in a single step anyways, no need to go through the algorithms.
 	// It also means that there is no need to check for going past the other.
-	if (max_turn != 0 && (max_turn < fabs(delta)))
+	if (max_turn != nullAngle && (max_turn < fabs(delta)))
 	{
-		if (delta > 0)
+		if (delta > nullAngle)
 		{
 			self->Angles.Yaw -= max_turn + ang_offset;
 		}
@@ -2962,7 +2967,7 @@ void A_Face(AActor *self, AActor *other, DAngle max_turn, DAngle max_pitch, DAng
 
 	// [DH] Now set pitch. In order to maintain compatibility, this can be
 	// disabled and is so by default.
-	if (max_pitch <= 180.)
+	if (max_pitch <= DAngle::fromDeg(180.))
 	{
 		DVector2 dist = self->Vec2To(other);
 		
@@ -2995,9 +3000,9 @@ void A_Face(AActor *self, AActor *other, DAngle max_turn, DAngle max_pitch, DAng
 		double dist_z = target_z - source_z;
 		double ddist = g_sqrt(dist.X*dist.X + dist.Y*dist.Y + dist_z*dist_z);
 
-		DAngle other_pitch = -DAngle::ToDegrees(g_asin(dist_z / ddist)).Normalized180();
+		DAngle other_pitch = -DAngle::fromRad(g_asin(dist_z / ddist)).Normalized180();
 		
-		if (max_pitch != 0)
+		if (max_pitch != nullAngle)
 		{
 			if (self->Angles.Pitch > other_pitch)
 			{
@@ -3015,15 +3020,11 @@ void A_Face(AActor *self, AActor *other, DAngle max_turn, DAngle max_pitch, DAng
 			self->Angles.Pitch = other_pitch;
 		}
 		self->Angles.Pitch += pitch_offset;
+		A_Face_ShadowHandling(self, other, max_pitch, other_pitch, true);
 	}
 	
 
-
-	// This will never work well if the turn angle is limited.
-	if (max_turn == 0 && (self->Angles.Yaw == other_angle) && other->flags & MF_SHADOW && !(self->flags6 & MF6_SEEINVISIBLE) )
-    {
-		self->Angles.Yaw += pr_facetarget.Random2() * (45 / 256.);
-    }
+	A_Face_ShadowHandling(self,other,max_turn,other_angle,false);
 }
 
 void A_FaceTarget(AActor *self)
@@ -3058,7 +3059,7 @@ DEFINE_ACTION_FUNCTION(AActor, A_MonsterRail)
 		
 	self->Angles.Yaw = self->AngleTo(self->target);
 
-	self->Angles.Pitch = P_AimLineAttack (self, self->Angles.Yaw, MISSILERANGE, &t, 60., 0, self->target);
+	self->Angles.Pitch = P_AimLineAttack (self, self->Angles.Yaw, MISSILERANGE, &t, DAngle::fromDeg(60.), 0, self->target);
 	if (t.linetarget == NULL)
 	{
 		// We probably won't hit the target, but aim at it anyway so we don't look stupid.
@@ -3070,10 +3071,7 @@ DEFINE_ACTION_FUNCTION(AActor, A_MonsterRail)
 	// Let the aim trail behind the player
 	self->Angles.Yaw = self->AngleTo(self->target, -self->target->Vel.X * 3, -self->target->Vel.Y * 3);
 
-	if (self->target->flags & MF_SHADOW && !(self->flags6 & MF6_SEEINVISIBLE))
-	{
-		self->Angles.Yaw += pr_railface.Random2() * 45./256;
-	}
+	A_MonsterRail_ShadowHandling(self);
 
 	FRailParams p;
 
@@ -3111,7 +3109,7 @@ DEFINE_ACTION_FUNCTION(AActor, A_Pain)
 	if (self->player && self->player->morphTics == 0)
 	{
 		const char *pain_amount;
-		FSoundID sfx_id = 0;
+		FSoundID sfx_id = NO_SOUND;
 
 		if (self->health < 25)
 			pain_amount = "*pain25";
@@ -3128,23 +3126,23 @@ DEFINE_ACTION_FUNCTION(AActor, A_Pain)
 			FString pain_sound = pain_amount;
 			pain_sound += '-';
 			pain_sound += self->player->LastDamageType.GetChars();
-			sfx_id = pain_sound;
-			if (sfx_id == 0)
+			sfx_id = S_FindSound(pain_sound);
+			if (sfx_id == NO_SOUND)
 			{
 				// Try again without a specific pain amount.
 				pain_sound = "*pain-";
 				pain_sound += self->player->LastDamageType.GetChars();
-				sfx_id = pain_sound;
+				sfx_id = S_FindSound(pain_sound);
 			}
 		}
-		if (sfx_id == 0)
+		if (sfx_id == NO_SOUND)
 		{
-			sfx_id = pain_amount;
+			sfx_id = S_FindSound(pain_amount);
 		}
 
 		S_Sound (self, CHAN_VOICE, 0, sfx_id, 1, ATTN_NORM);
 	}
-	else if (self->PainSound)
+	else if (self->PainSound.isvalid())
 	{
 		S_Sound (self, CHAN_VOICE, 0, self->PainSound, 1, ATTN_NORM);
 	}

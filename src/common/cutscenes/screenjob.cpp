@@ -87,8 +87,8 @@ VMFunction* LookupFunction(const char* qname, bool validate)
 	size_t p = strcspn(qname, ".");
 	if (p == 0) 
 		I_Error("Call to undefined function %s", qname);
-	FString clsname(qname, p);
-	FString funcname = qname + p + 1;
+	FName clsname(qname, p, true);
+	FName funcname(qname + p + 1, true);
 
 	auto func = PClass::FindFunction(clsname, funcname);
 	if (func == nullptr) 
@@ -153,10 +153,10 @@ void AddGenericVideo(DObject* runner, const FString& fn, int soundid, int fps)
 
 int CutsceneDef::GetSound()
 {
-	int id = -1;
+	FSoundID id = INVALID_SOUND;
 	if (soundName.IsNotEmpty()) id = soundEngine->FindSound(soundName);
-	if (id <= 0) id = soundEngine->FindSoundByResID(soundID);
-	return id;
+	if (id == INVALID_SOUND) id = soundEngine->FindSoundByResID(soundID);
+	return id.index();
 }
 
 void CutsceneDef::Create(DObject* runner)
