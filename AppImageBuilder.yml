@@ -3,11 +3,11 @@ version: 1
 AppDir:
   path: ./AppDir
   app_info:
-    id: com.GZDoom.app
-    name: GZDoom
+    id: com.HandsOfNecromancy2.app
+    name: HandsOfNecromancy2
     icon: game_icon.png
     version: latest
-    exec: ./gzdoom
+    exec: ./handsofnecromancy2
     exec_args: $@
   apt:
     arch: amd64
