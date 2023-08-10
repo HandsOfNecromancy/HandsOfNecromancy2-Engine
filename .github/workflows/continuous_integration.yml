@@ -58,8 +58,8 @@ jobs:
         - {
             name: "Linux Clang 7",
             os: ubuntu-20.04,
-            extra_options: "-DCMAKE_C_COMPILER=clang-7.0 -DCMAKE_CXX_COMPILER=clang++-7.0 -DDYN_OPENAL=OFF",
-            deps_cmdline: "sudo apt update && sudo apt install clang-7.0 libsdl2-dev libvpx-dev libopenal-dev libfluidsynth-dev libmpg123-dev libsndfile1-dev",
+            extra_options: "-DCMAKE_C_COMPILER=clang-7 -DCMAKE_CXX_COMPILER=clang++-7 -DDYN_OPENAL=OFF",
+            deps_cmdline: "sudo apt update && sudo apt install clang-7 libsdl2-dev libvpx-dev libopenal-dev libfluidsynth-dev libmpg123-dev libsndfile1-dev",
             build_type: "Debug"
           }
         - {
@@ -108,6 +108,7 @@ jobs:
 
     - name: Create Package
       #if: runner.os == 'Windows'  # Remove to make packages of all targets
+      if: runner.build_type == 'Release'
       shell: bash
       run: |
         cd build
