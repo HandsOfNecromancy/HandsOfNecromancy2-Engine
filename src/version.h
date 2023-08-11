@@ -91,18 +91,18 @@ const char *GetVersionString();
 #define SAVEVER 4560
 
 // This is so that derivates can use the same savegame versions without worrying about engine compatibility
-#define GAMESIG "HANDSOFNECROMANCY"
+#define GAMESIG "HANDSOFNECROMANCY2"
 #define BASEWAD "handsofnecromancy.pk3"
 #define OPTIONALWAD "game_support.pk3"
 #define GZDOOM 1
 #define VR3D_ENABLED
 
 // More stuff that needs to be different for derivatives.
-#define GAMENAME "Hands of Necromancy"
-#define WGAMENAME L"Hands of Necromancy"
-#define GAMENAMELOWERCASE "handsofnecromancy"
-#define FORUM_URL "http://forum.zdoom.org/"
-#define BUGS_FORUM_URL	"http://forum.zdoom.org/viewforum.php?f=2"
+#define GAMENAME "Hands of Necromancy II"
+#define WGAMENAME L"Hands of Necromancy II"
+#define GAMENAMELOWERCASE "handsofnecromancy2"
+#define FORUM_URL "https://steamcommunity.com/app/1898610/discussions/0/"
+#define BUGS_FORUM_URL	"https://steamcommunity.com/app/1898610/discussions/0/"
 
 #if defined(__APPLE__) || defined(_WIN32)
 #define GAME_DIR GAMENAME
@@ -110,7 +110,7 @@ const char *GetVersionString();
 #define GAME_DIR ".config/" GAMENAMELOWERCASE
 #endif
 
-#define DEFAULT_DISCORD_APP_ID "954026385909895218"
+#define DEFAULT_DISCORD_APP_ID "1135960889921646593"
 
 const int SAVEPICWIDTH = 216;
 const int SAVEPICHEIGHT = 162;
