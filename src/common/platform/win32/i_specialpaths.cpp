@@ -64,7 +64,7 @@ bool IsPortable()
 {
 	// modern windows convention dictates that we use known folders unconditionally. no "portable program" usage.
 	// this will also make the program compatible for cloud saves
-	return true;
+	return false;
 #if 0
 	// Cache this value so the semantics don't change during a single run
 	// of the program. (e.g. Somebody could add write access while the
