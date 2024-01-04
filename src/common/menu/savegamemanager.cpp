@@ -557,7 +557,7 @@ FString G_GetSavegamesFolder()
 	else
 	{
 		name = **save_dir ? FString(save_dir) : M_GetSavegamesPath();
-		usefilter = false;
+		usefilter = true;
 	}
 
 	const size_t len = name.Len();
@@ -568,8 +568,8 @@ FString G_GetSavegamesFolder()
 			name << '/';
 	}
 
-	//if (usefilter && SavegameFolder.IsNotEmpty())
-	//	name << SavegameFolder << '/';
+	if (usefilter && SavegameFolder.IsNotEmpty())
+		name << SavegameFolder << '/';
 
 	name = NicePath(name.GetChars());
 	CreatePath(name.GetChars());
