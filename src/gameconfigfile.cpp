@@ -294,6 +294,8 @@ void FGameConfigFile::DoAutoloadSetup (FIWadManager *iwad_man)
 		"# 'doom.doom2.commercial.Autoload' only when playing doom2.wad.\n\n");
 }
 
+EXTERN_CVAR(Int, gl_particles_style)
+
 void FGameConfigFile::DoGlobalSetup ()
 {
 	if (SetSection ("GlobalSettings.Unknown"))
@@ -616,6 +618,7 @@ void FGameConfigFile::DoGlobalSetup ()
 					var->SetGenericRep(v, CVAR_Int);
 				}
 			}
+			gl_particles_style = 2;
 		}
 	}
 }

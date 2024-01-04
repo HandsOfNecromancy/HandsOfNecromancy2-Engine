@@ -27,7 +27,7 @@ if( APPLE )
     option( OSX_COCOA_BACKEND "Use native Cocoa backend instead of SDL" ON )
 endif()
 
-option( ZDOOM_ENABLE_SWR "Enable software renderer" ON )
+option( ZDOOM_ENABLE_SWR "Enable software renderer" OFF )
 if( NOT ZDOOM_ENABLE_SWR )
 	add_definitions( -DNO_SWRENDERER )
 endif()
@@ -1520,3 +1520,4 @@ source_group("Statusbar" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOURCE_DIR}/g_stat
 source_group("Versioning" FILES version.h win32/zdoom.rc)
 source_group("Xlat" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOURCE_DIR}/xlat/.+" FILES ${CMAKE_CURRENT_BINARY_DIR}/xlat_parser.c ${CMAKE_CURRENT_BINARY_DIR}/xlat_parser.h)
 source_group("Source Files" FILES ${CMAKE_CURRENT_BINARY_DIR}/sc_man_scanner.h common/engine/sc_man_scanner.re)
+
