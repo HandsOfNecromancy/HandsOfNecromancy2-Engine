@@ -7,14 +7,11 @@
 #include "textureid.h"
 #include "textures.h"
 
-class LevelSubmesh;
 class FGameTexture;
 struct LevelMeshSurface;
 
 struct LevelMeshSurface
 {
-	LevelSubmesh* Submesh = nullptr;
-
 	struct
 	{
 		unsigned int StartVertIndex = 0;
@@ -39,8 +36,7 @@ struct LevelMeshSurface
 	// Light list location in the lightmapper GPU buffers
 	struct
 	{
-		int Pos = -1;
+		int Pos = 0;
 		int Count = 0;
-		int ResetCounter = -1;
 	} LightList;
 };

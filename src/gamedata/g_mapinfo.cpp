@@ -251,6 +251,7 @@ void level_info_t::Reset()
 		flags2 = LEVEL2_LAXMONSTERACTIVATION;
 	flags3 = 0;
 	vkdflags = 0;
+	LightningSound = "world/thunder";
 	Music = "";
 	LevelName = "";
 	AuthorName = "";
@@ -998,6 +999,13 @@ DEFINE_MAP_OPTION(next, true)
 	parse.ParseNextMap(info->NextMap);
 }
 
+DEFINE_MAP_OPTION(lightningsound, true)
+{
+	parse.ParseAssign();
+	parse.sc.MustGetString();
+	info->LightningSound = parse.sc.String;
+}
+
 DEFINE_MAP_OPTION(author, true)
 {
 	parse.ParseAssign();
@@ -1707,6 +1715,9 @@ enum EMIType
 	MITYPE_SETFLAG3,
 	MITYPE_CLRFLAG3,
 	MITYPE_SCFLAGS3,
+	MITYPE_SETFLAGR,
+	MITYPE_CLRFLAGR,
+	MITYPE_SCFLAGSR,
 	MITYPE_SETVKDFLAG,
 	MITYPE_CLRVKDFLAG,
 	MITYPE_SCVKDFLAGS,
@@ -1815,6 +1826,7 @@ MapFlagHandlers[] =
 	{ "disableskyboxao",				MITYPE_CLRFLAG3,	LEVEL3_SKYBOXAO, 0 },
 	{ "avoidmelee",						MITYPE_SETFLAG3,	LEVEL3_AVOIDMELEE, 0 },
 	{ "attenuatelights",				MITYPE_SETFLAG3,	LEVEL3_ATTENUATE, 0 },
+	{ "pathing",						MITYPE_SETFLAG3,	LEVEL3_PATHING, 0 },
 	{ "nousersave",						MITYPE_SETVKDFLAG,	VKDLEVELFLAG_NOUSERSAVE, 0 },
 	{ "noautomap",						MITYPE_SETVKDFLAG,	VKDLEVELFLAG_NOAUTOMAP, 0 },
 	{ "noautosaveonenter",				MITYPE_SETVKDFLAG,	VKDLEVELFLAG_NOAUTOSAVEONENTER, 0 },
@@ -1970,6 +1982,29 @@ void FMapInfoParser::ParseMapDefinition(level_info_t &info)
 
 			case MITYPE_SCFLAGS3:
 				info.flags3 = (info.flags3 & handler->data2) | handler->data1;
+				break;
+
+			case MITYPE_SETFLAGR:
+				if (!CheckAssign())
+				{
+					info.flagsr |= handler->data1;
+				}
+				else
+				{
+					sc.MustGetNumber();
+					if (sc.Number) info.flagsr |= handler->data1;
+					else info.flagsr &= ~handler->data1;
+				}
+				info.flagsr |= handler->data2;
+				break;
+
+			case MITYPE_CLRFLAGR:
+				info.flagsr &= ~handler->data1;
+				info.flagsr |= handler->data2;
+				break;
+
+			case MITYPE_SCFLAGSR:
+				info.flagsr = (info.flagsr & handler->data2) | handler->data1;
 				break;
 
 			case MITYPE_SETVKDFLAG:
@@ -2629,7 +2664,7 @@ void G_ParseMapInfo (FString basemapinfo)
 		if (comp >= 0)
 		{
 			auto complvl = fileSystem.ReadFile(comp);
-			auto data = complvl.GetString();
+			auto data = complvl.string();
 			int length = fileSystem.FileLength(comp);
 			if (length == 7 && !strnicmp("vanilla", data, 7))
 			{

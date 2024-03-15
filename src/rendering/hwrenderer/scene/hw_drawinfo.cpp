@@ -411,7 +411,7 @@ void HWDrawInfo::CreateScene(bool drawpsprites, FRenderState& state)
 
 		validcount++;	// used for processing sidedefs only once by the renderer.
 
-		auto& portals = static_cast<DoomLevelSubmesh*>(level.levelMesh->StaticMesh.get())->Portals;
+		auto& portals = level.levelMesh->WallPortals;
 
 		// draw level into depth buffer
 		state.SetColorMask(false);
@@ -622,7 +622,7 @@ void HWDrawInfo::UpdateLightmaps()
 {
 	if (!outer && VisibleTiles.Size() < unsigned(lm_background_updates))
 	{
-		for (auto& e : level.levelMesh->StaticMesh->LightmapTiles)
+		for (auto& e : level.levelMesh->LightmapTiles)
 		{
 			if (e.NeedsUpdate)
 			{
@@ -791,6 +791,7 @@ void HWDrawInfo::DrawCorona(FRenderState& state, AActor* corona, float coronaFad
 
 	state.SetLightIndex(-1);
 	state.SetRenderStyle(corona->RenderStyle);
+	state.SetTextureMode(TM_NORMAL); // This is needed because the next line doesn't always set the mode...
 	state.SetTextureMode(corona->RenderStyle);
 
 	state.SetMaterial(tex, UF_Sprite, CTF_Expand, CLAMP_XY_NOMIP, 0, 0);

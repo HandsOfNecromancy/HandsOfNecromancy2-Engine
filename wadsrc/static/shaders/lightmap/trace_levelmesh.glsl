@@ -1,137 +1,50 @@
 
-vec4 rayColor;
+vec3 BeerLambertSimple(vec3 medium, float depth, vec3 ray_color);
 
-vec4 alphaBlend(vec4 a, vec4 b);
-vec4 BeerLambertSimple(vec4 medium, vec4 ray_color);
-vec4 blend(vec4 a, vec4 b);
-
-int TraceFirstHitTriangleT(vec3 origin, float tmin, vec3 dir, float tmax, out float t)
+SurfaceInfo GetSurface(int primitiveIndex)
 {
-	int primitiveID = -1;
-	vec3 primitiveWeights;
-	for (int i = 0; i < 4; i++)
+	return surfaces[surfaceIndices[primitiveIndex]];
+}
+
+vec2 GetSurfaceUV(int primitiveIndex, vec3 primitiveWeights)
+{
+	int index = primitiveIndex * 3;
+	return
+		vertices[elements[index + 1]].uv * primitiveWeights.x +
+		vertices[elements[index + 2]].uv * primitiveWeights.y +
+		vertices[elements[index + 0]].uv * primitiveWeights.z;
+}
+
+vec3 PassRayThroughSurface(SurfaceInfo surface, vec2 uv, vec3 rayColor)
+{
+	if (surface.TextureIndex == 0)
 	{
-		primitiveID = TraceFirstHitTriangleNoPortal(origin, tmin, dir, tmax, t, primitiveWeights);
-
-		if(primitiveID < 0)
-		{
-			break;
-		}
-
-		SurfaceInfo surface = surfaces[surfaceIndices[primitiveID]];
-
-		if(surface.PortalIndex == 0)
-		{
-			int index = primitiveID * 3;
-			vec2 uv = vertices[elements[index + 1]].uv * primitiveWeights.x + vertices[elements[index + 2]].uv * primitiveWeights.y + vertices[elements[index + 0]].uv * primitiveWeights.z;
-
-			if (surface.TextureIndex == 0)
-			{
-				break;
-			}
-
-			vec4 color = texture(textures[surface.TextureIndex], uv);
-			color.w *= surface.Alpha;
-
-			if (color.w > 0.999 || all(lessThan(rayColor.rgb, vec3(0.001))))
-			{
-				break;
-			}
-
-			rayColor = blend(color, rayColor);
-		}
-
-		// Portal was hit: Apply transformation onto the ray
-		mat4 transformationMatrix = portals[surface.PortalIndex].Transformation;
-
-		origin = (transformationMatrix * vec4(origin + dir * t, 1.0)).xyz;
-		dir = (transformationMatrix * vec4(dir, 0.0)).xyz;
-		tmax -= t;
+		return rayColor;
 	}
-	return primitiveID;
-}
-
-int TraceFirstHitTriangle(vec3 origin, float tmin, vec3 dir, float tmax)
-{
-	float t;
-	return TraceFirstHitTriangleT(origin, tmin, dir, tmax, t);
-}
-
-bool TraceAnyHit(vec3 origin, float tmin, vec3 dir, float tmax)
-{
-	return TraceFirstHitTriangle(origin, tmin, dir, tmax) >= 0;
-}
-
-bool TracePoint(vec3 origin, vec3 target, float tmin, vec3 dir, float tmax)
-{
-	int primitiveID;
-	float t;
-	vec3 primitiveWeights;
-	for (int i = 0; i < 4; i++)
+	else
 	{
-		t = tmax;
-		primitiveID = TraceFirstHitTriangleNoPortal(origin, tmin, dir, tmax, t, primitiveWeights);
+		vec4 color = texture(textures[surface.TextureIndex], uv);
 
-		origin += dir * t;
-		tmax -= t;
+		// To do: currently we do not know the material/renderstyle of the surface.
+		//
+		// This means we can't apply translucency and we can't do something like BeerLambertSimple.
+		// In order to improve this SurfaceInfo needs additional info.
+		//
+		// return BeerLambertSimple(1.0 - color.rgb, color.a * surface.Alpha, rayColor);
 
-		if(primitiveID < 0)
-		{
-			// We didn't hit anything
-			break;
-		}
-
-		SurfaceInfo surface = surfaces[surfaceIndices[primitiveID]];
-
-		if (surface.PortalIndex == 0)
-		{
-			int index = primitiveID * 3;
-			vec2 uv = vertices[elements[index + 1]].uv * primitiveWeights.x + vertices[elements[index + 2]].uv * primitiveWeights.y + vertices[elements[index + 0]].uv * primitiveWeights.z;
-
-			if (surface.TextureIndex == 0)
-			{
-				break;
-			}
-
-			vec4 color = texture(textures[surface.TextureIndex], uv);
-			color.w *= surface.Alpha;
-
-			if (color.w > 0.999 || all(lessThan(rayColor.rgb, vec3(0.001))))
-			{
-				break;
-			}
-
-			rayColor = blend(color, rayColor);
-		}
-
-		if(dot(surface.Normal, dir) >= 0.0)
-		{
-			continue;
-		}
-
-		mat4 transformationMatrix = portals[surface.PortalIndex].Transformation;
-		origin = (transformationMatrix * vec4(origin, 1.0)).xyz;
-		dir = (transformationMatrix * vec4(dir, 0.0)).xyz;
+		// Assume the renderstyle is basic alpha blend for now.
+		return rayColor * (1.0 - color.a * surface.Alpha);
 	}
-
-	return distance(origin, target) <= 1.0;
 }
 
-vec4 alphaBlend(vec4 a, vec4 b)
+void TransformRay(uint portalIndex, inout vec3 origin, inout vec3 dir)
 {
-	float na = a.w + b.w * (1.0 - a.w);
-	return vec4((a.xyz * a.w + b.xyz * b.w * (1.0 - a.w)) / na, max(0.001, na));
+	mat4 transformationMatrix = portals[portalIndex].Transformation;
+	origin = (transformationMatrix * vec4(origin, 1.0)).xyz;
+	dir = (transformationMatrix * vec4(dir, 0.0)).xyz;
 }
 
-vec4 BeerLambertSimple(vec4 medium, vec4 ray_color) // based on Beer-Lambert law
+vec3 BeerLambertSimple(vec3 medium, float depth, vec3 ray_color) // based on Beer-Lambert law
 {
-	float z = medium.w;
-	ray_color.rgb *= exp(-medium.rgb * vec3(z));
-	return ray_color;
+	return ray_color * exp(-medium * depth);
 }
-
-vec4 blend(vec4 a, vec4 b)
-{
-	return BeerLambertSimple(vec4(1.0 - a.rgb, a.w), b);
-}
-

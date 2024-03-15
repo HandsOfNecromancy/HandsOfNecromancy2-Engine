@@ -1762,10 +1762,20 @@ std::shared_ptr<VulkanSurface> VulkanSurfaceBuilder::Create(std::shared_ptr<Vulk
 
 /////////////////////////////////////////////////////////////////////////////
 
+#ifndef VK_KHR_MAINTENANCE4_EXTENSION_NAME
+#define VK_KHR_MAINTENANCE4_EXTENSION_NAME "VK_KHR_maintenance4"
+#endif
+
 VulkanDeviceBuilder::VulkanDeviceBuilder()
 {
+	// Extensions desired by vk_mem_alloc
 	OptionalExtension(VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME);
 	OptionalExtension(VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME);
+	OptionalExtension(VK_KHR_BIND_MEMORY_2_EXTENSION_NAME);
+	//OptionalExtension(VK_KHR_MAINTENANCE4_EXTENSION_NAME);
+	OptionalExtension(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
+	OptionalExtension(VK_EXT_MEMORY_PRIORITY_EXTENSION_NAME);
+	OptionalExtension(VK_AMD_DEVICE_COHERENT_MEMORY_EXTENSION_NAME);
 }
 
 VulkanDeviceBuilder& VulkanDeviceBuilder::RequireExtension(const std::string& extensionName)
@@ -1912,6 +1922,12 @@ std::vector<VulkanCompatibleDevice> VulkanDeviceBuilder::FindDevices(const std::
 		static const int typeSort[] = { 4, 1, 0, 2, 3 };
 		int sortA = a.Device->Properties.Properties.deviceType < 5 ? typeSort[a.Device->Properties.Properties.deviceType] : (int)a.Device->Properties.Properties.deviceType;
 		int sortB = b.Device->Properties.Properties.deviceType < 5 ? typeSort[b.Device->Properties.Properties.deviceType] : (int)b.Device->Properties.Properties.deviceType;
+		if (sortA != sortB)
+			return sortA < sortB;
+
+		// Any driver that is emulating vulkan (i.e. via Direct3D 12) should only be chosen as the last option within each GPU type
+		sortA = a.Device->Properties.LayeredDriver.underlyingAPI;
+		sortB = b.Device->Properties.LayeredDriver.underlyingAPI;
 		if (sortA != sortB)
 			return sortA < sortB;
 
