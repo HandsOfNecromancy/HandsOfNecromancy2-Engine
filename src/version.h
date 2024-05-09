@@ -107,8 +107,11 @@ const char *GetVersionString();
 #define GAMENAME "Hands of Necromancy II"
 #define WGAMENAME L"Hands of Necromancy II"
 #define GAMENAMELOWERCASE "handsofnecromancy2"
-#define FORUM_URL "https://steamcommunity.com/app/1898610/discussions/0/"
-#define BUGS_FORUM_URL	"https://steamcommunity.com/app/1898610/discussions/0/"
+#define QUERYIWADDEFAULT false
+#define FORUM_URL "http://forum.zdoom.org/"
+#define BUGS_FORUM_URL	"http://forum.zdoom.org/viewforum.php?f=2"
+// For QUERYIWADDEFAULT: Set to 'true' to always show dialog box on startup by default, 'false' to disable.
+// Should set to 'false' for standalone games, and set to 'true' for regular source port forks that are meant to run any game.
 
 #if defined(__APPLE__) || defined(_WIN32)
 #define GAME_DIR GAMENAME

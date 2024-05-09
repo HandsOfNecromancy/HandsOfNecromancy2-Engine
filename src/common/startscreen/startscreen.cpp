@@ -607,7 +607,7 @@ bool FStartScreen::NetInit(const char* message, int numplayers)
 {
 	NetMaxPos = numplayers;
 	NetCurPos = 0;
-	NetMessageString.Format("%s %s", message, GStrings("TXT_NET_PRESSESC"));
+	NetMessageString.Format("%s %s", message, GStrings.GetString("TXT_NET_PRESSESC"));
 	NetProgress(1);	// You always know about yourself
 	return true;
 }
@@ -659,7 +659,6 @@ void FStartScreen::Render(bool force)
 	auto nowtime = I_msTime();
 	// Do not refresh too often. This function gets called a lot more frequently than the screen can update.
 	if (nowtime - screen->FrameTime > minwaittime || force)
-
 	{
 		screen->FrameTime = nowtime;
 		screen->FrameTimeNS = I_nsTime();
