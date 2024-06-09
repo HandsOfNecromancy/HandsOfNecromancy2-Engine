@@ -89,7 +89,7 @@
 #endif
 
 void InitCrashReporter(const std::wstring& reports_directory, const std::wstring& uploader_executable);
-FString GetKnownFolder(int shell_folder, REFKNOWNFOLDERID known_folder, bool create);
+bool GetKnownFolder(int shell_folder, REFKNOWNFOLDERID known_folder, bool create, FString &path);
 
 void DestroyCustomCursor();
 int GameMain();
@@ -315,7 +315,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE nothing, LPWSTR cmdline, int 
 		WCHAR exeFilename[1024] = {};
 		if (GetModuleFileName(0, exeFilename, 1023) != 0)
 		{
-			FString reportsDirectory = GetKnownFolder(CSIDL_LOCAL_APPDATA, FOLDERID_LocalAppData, true);
+			FString reportsDirectory;
+			GetKnownFolder(CSIDL_LOCAL_APPDATA, FOLDERID_LocalAppData, true, reportsDirectory);
 			reportsDirectory += "/" GAMENAMELOWERCASE;
 			reportsDirectory += "/crashreports";
 			CreatePath(reportsDirectory.GetChars());
