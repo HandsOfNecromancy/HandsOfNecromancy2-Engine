@@ -41,7 +41,7 @@ const char *GetVersionString();
 
 /** Lots of different version numbers **/
 
-#define VERSIONSTR "0.0pre"
+#define VERSIONSTR "hon-3.0"
 
 // The version as seen in the Windows resource
 #define RC_FILEVERSION 0,0,9999,0
