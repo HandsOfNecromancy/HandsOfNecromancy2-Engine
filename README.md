@@ -10,5 +10,6 @@ If you want to try and get the game running on GZDoom, you're going to need to c
   - This commit is necessary in order to make the game look right. It allows rendering sprites under the ground.
 - https://github.com/HandsOfNecromancy/HandsOfNecromancy2-Engine/commit/83ad8ed5d5784458fe7c86fa54a4b980774ef8a3
   - This commit supports the skyward projectiles trick by not unnecessarily moving light positions for non-interacting objects
-- https://github.com/HandsOfNecromancy/HandsOfNecromancy2-Engine/commit/55ce9f02e9d3ffc37539feb128b438d1f2039f8d
-  - This commit is necessary in order to do proper font displays for the actor label names
+- ~~https://github.com/HandsOfNecromancy/HandsOfNecromancy2-Engine/commit/55ce9f02e9d3ffc37539feb128b438d1f2039f8d~~
+  - ~~This commit is necessary in order to do proper font displays for the actor label names~~
+  - (note: the above was [recently merged into GZDoom](https://github.com/ZDoom/gzdoom/commit/3524d06813cd4841056901111bf649b023274255) but is not yet in an official release)
