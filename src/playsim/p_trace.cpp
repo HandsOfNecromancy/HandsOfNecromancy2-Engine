@@ -334,7 +334,7 @@ void FTraceInfo::Setup3DFloors()
 					if (bf < ff_top)
 					{
 						CurSector->floorplane = *rover->top.plane;
-						CurSector->SetTexture(sector_t::floor, *rover->top.texture, false);
+						CurSector->SetTexture(sector_t::floor, *rover->top.texture, false, false);
 						CurSector->ClearPortal(sector_t::floor);
 						bf = ff_top;
 					}
@@ -345,7 +345,7 @@ void FTraceInfo::Setup3DFloors()
 					if (bc > ff_bottom)
 					{
 						CurSector->ceilingplane = *rover->bottom.plane;
-						CurSector->SetTexture(sector_t::ceiling, *rover->bottom.texture, false);
+						CurSector->SetTexture(sector_t::ceiling, *rover->bottom.texture, false, false);
 						bc = ff_bottom;
 						CurSector->ClearPortal(sector_t::ceiling);
 					}
@@ -356,7 +356,7 @@ void FTraceInfo::Setup3DFloors()
 					if (bf < ff_bottom)
 					{
 						CurSector->floorplane = *rover->bottom.plane;
-						CurSector->SetTexture(sector_t::floor, *rover->bottom.texture, false);
+						CurSector->SetTexture(sector_t::floor, *rover->bottom.texture, false, false);
 						CurSector->ClearPortal(sector_t::floor);
 						bf = ff_bottom;
 					}
@@ -364,7 +364,7 @@ void FTraceInfo::Setup3DFloors()
 					if (bc > ff_top)
 					{
 						CurSector->ceilingplane = *rover->top.plane;
-						CurSector->SetTexture(sector_t::ceiling, *rover->top.texture, false);
+						CurSector->SetTexture(sector_t::ceiling, *rover->top.texture, false, false);
 						CurSector->ClearPortal(sector_t::ceiling);
 						bc = ff_top;
 					}
@@ -496,6 +496,10 @@ bool FTraceInfo::LineCheck(intercept_t *in, double dist, DVector3 hit, bool spec
 			entersector = &DummySector[sectorsel];
 			sectorsel ^= 1;
 
+			// We need to make sure that 3D floors clipping underneath the ground/above the ceiling don't
+			// accidentally get ignored.
+			bool setFloor = false, setCeiling = false;
+
 			for (auto rover : entersector->e->XFloor.ffloors)
 			{
 				int entershootthrough = !!(rover->flags&FF_SHOOTTHROUGH);
@@ -508,8 +512,8 @@ bool FTraceInfo::LineCheck(intercept_t *in, double dist, DVector3 hit, bool spec
 					// clip to the part of the sector we are in
 					if (hit.Z > ff_top)
 					{
-						// 3D floor height is the same as the floor height. We need to test a second spot to see if it is above or below
-						if (fabs(bf - ff_top) < EQUAL_EPSILON)
+						// 3D floor height is the same as the floor height or underground. We need to test a second spot to see if it is above or below
+						if ((ff_top < bf && !setFloor) || fabs(bf - ff_top) < EQUAL_EPSILON)
 						{
 							double cf = entersector->floorplane.ZatPoint(entersector->centerspot);
 							double ffc = rover->top.plane->ZatPoint(entersector->centerspot);
@@ -522,16 +526,17 @@ bool FTraceInfo::LineCheck(intercept_t *in, double dist, DVector3 hit, bool spec
 						// above
 						if (bf < ff_top)
 						{
+							setFloor = true;
 							entersector->floorplane = *rover->top.plane;
-							entersector->SetTexture(sector_t::floor, *rover->top.texture, false);
+							entersector->SetTexture(sector_t::floor, *rover->top.texture, false, false);
 							entersector->ClearPortal(sector_t::floor);
 							bf = ff_top;
 						}
 					}
 					else if (hit.Z < ff_bottom)
 					{
-						// 3D floor height is the same as the ceiling height. We need to test a second spot to see if it is above or below
-						if (fabs(bc - ff_bottom) < EQUAL_EPSILON)
+						// 3D floor height is the same as the ceiling height or above it. We need to test a second spot to see if it is above or below
+						if ((ff_bottom > bc && !setCeiling) || fabs(bc - ff_bottom) < EQUAL_EPSILON)
 						{
 							double cc = entersector->ceilingplane.ZatPoint(entersector->centerspot);
 							double fcc = rover->bottom.plane->ZatPoint(entersector->centerspot);
@@ -544,8 +549,9 @@ bool FTraceInfo::LineCheck(intercept_t *in, double dist, DVector3 hit, bool spec
 						//below
 						if (bc > ff_bottom)
 						{
+							setCeiling = true;
 							entersector->ceilingplane = *rover->bottom.plane;
-							entersector->SetTexture(sector_t::ceiling, *rover->bottom.texture, false);
+							entersector->SetTexture(sector_t::ceiling, *rover->bottom.texture, false, false);
 							entersector->ClearPortal(sector_t::ceiling);
 							bc = ff_bottom;
 						}
@@ -632,6 +638,9 @@ cont:
 		{
 		case TRACE_Stop:
 			return false;
+
+		case TRACE_ContinueOutOfBounds:
+			return true;
 
 		case TRACE_Abort:
 			Results->HitType = TRACE_HitNone;
@@ -732,6 +741,7 @@ bool FTraceInfo::ThingCheck(intercept_t *in, double dist, DVector3 hit)
 			switch (TraceCallback(*Results, TraceCallbackData))
 			{
 			case TRACE_Continue: return true;
+			case TRACE_ContinueOutOfBounds: return true;
 			case TRACE_Stop:	 return false;
 			case TRACE_Abort:	 Results->HitType = TRACE_HitNone; return false;
 			case TRACE_Skip:	 Results->HitType = TRACE_HitNone; return true;

@@ -60,8 +60,8 @@ static TArray<uint8_t> DecalTranslations;
 // Sometimes two machines in a game will disagree on the state of
 // decals. I do not know why.
 
-static FRandom pr_decalchoice ("DecalChoice");
-static FRandom pr_decal ("Decal");
+static FCRandom pr_decalchoice ("DecalChoice");
+static FCRandom pr_decal ("Decal");
 
 class FDecalGroup : public FDecalBase
 {
@@ -203,6 +203,11 @@ enum
 const FDecalTemplate *FDecalBase::GetDecal () const
 {
 	return NULL;
+}
+
+FName FDecalBase::GetDecalName() const
+{
+	return Name;
 }
 
 void FDecalTemplate::ReplaceDecalRef(FDecalBase *from, FDecalBase *to)
@@ -981,6 +986,19 @@ void FDecalTemplate::ApplyToDecal (DBaseDecal *decal, side_t *wall) const
 	{
 		Animator->CreateThinker (decal, wall);
 	}
+
+	decal->Side = wall;
+	decal->WallPrev = wall->AttachedDecals;
+
+	while (decal->WallPrev != nullptr && decal->WallPrev->WallNext != nullptr)
+	{
+		decal->WallPrev = decal->WallPrev->WallNext;
+	}
+	if (decal->WallPrev != nullptr) decal->WallPrev->WallNext = decal;
+	else wall->AttachedDecals = decal;
+	decal->WallNext = nullptr;
+
+	LevelMeshUpdater->SideDecalsChanged(wall);
 }
 
 const FDecalTemplate *FDecalTemplate::GetDecal () const

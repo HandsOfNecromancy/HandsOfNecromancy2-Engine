@@ -40,6 +40,11 @@ PlayGamePage::PlayGamePage(LauncherWindow* launcher, WadStuff* wads, int numwads
 	GamesList->OnActivated = [=]() { OnGamesListActivated(); };
 }
 
+void PlayGamePage::SetExtraArgs(const std::string& args)
+{
+	ParametersEdit->SetText(args);
+}
+
 std::string PlayGamePage::GetExtraArgs()
 {
 	return ParametersEdit->GetText();

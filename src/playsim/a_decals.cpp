@@ -156,7 +156,8 @@ void DBaseDecal::Remove ()
 {
 	if (WallPrev == nullptr)
 	{
-		if (Side != nullptr) Side->AttachedDecals = WallNext;
+		if (Side != nullptr)
+			Side->AttachedDecals = WallNext;
 	}
 	else WallPrev->WallNext = WallNext;
 
@@ -164,6 +165,9 @@ void DBaseDecal::Remove ()
 
 	WallPrev = nullptr;
 	WallNext = nullptr;
+
+	if (Side)
+		LevelMeshUpdater->SideDecalsChanged(Side);
 }
 
 //----------------------------------------------------------------------------
@@ -251,17 +255,8 @@ void DBaseDecal::SetShade (int r, int g, int b)
 
 FTextureID DBaseDecal::StickToWall (side_t *wall, double x, double y, F3DFloor *ffloor)
 {
-	Side = wall;
-	WallPrev = wall->AttachedDecals;
-
-	while (WallPrev != nullptr && WallPrev->WallNext != nullptr)
-	{
-		WallPrev = WallPrev->WallNext;
-	}
-	if (WallPrev != nullptr) WallPrev->WallNext = this;
-	else wall->AttachedDecals = this;
-	WallNext = nullptr;
-
+	Side = nullptr;
+	WallNext = WallPrev = nullptr;
 
 	sector_t *front, *back;
 	line_t *line;
@@ -854,7 +849,7 @@ void SprayDecal(AActor *shooter, const char *name, double distance, DVector3 off
 	{
 		if (trace.HitType == TRACE_HitWall)
 		{
-			DImpactDecal::StaticCreate(shooter->Level, name, trace.HitPos, trace.Line->sidedef[trace.Side], NULL, entry, bloodTrans);
+			DImpactDecal::StaticCreate(shooter->Level, name, trace.HitPos, trace.Line->sidedef[trace.Side], trace.ffloor, entry, bloodTrans);
 		}
 	}
 }
@@ -933,4 +928,21 @@ DEFINE_ACTION_FUNCTION_NATIVE(ADecal, SpawnDecal, SpawnDecal)
 	PARAM_SELF_PROLOGUE(AActor);
 	SpawnDecal(self);
 	return 0;
+}
+
+//----------------------------------------------------------------------------
+//
+//
+//
+//----------------------------------------------------------------------------
+
+static int GetDecalName(AActor* self)
+{
+	return self->DecalGenerator != nullptr ? self->DecalGenerator->GetDecalName().GetIndex() : NAME_None;
+}
+
+DEFINE_ACTION_FUNCTION_NATIVE(AActor, GetDecalName, GetDecalName)
+{
+	PARAM_SELF_PROLOGUE(AActor);
+	ACTION_RETURN_INT(GetDecalName(self));
 }

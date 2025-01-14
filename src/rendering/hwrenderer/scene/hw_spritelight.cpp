@@ -52,7 +52,7 @@ class ActorTraceStaticLight
 public:
 	ActorTraceStaticLight(AActor* actor) : Actor(actor)
 	{
-		if (Actor && (Actor->Pos() != Actor->StaticLightsTraceCache.Pos || (Actor->Sector && (Actor->Sector->Flags & SECF_LM_DYNAMIC))))
+		if (Actor && (Actor->Pos() != Actor->StaticLightsTraceCache.Pos || (Actor->Sector && (Actor->Sector->Flags & SECF_LM_DYNAMIC) && lm_dynamic)))
 		{
 			Actor->StaticLightsTraceCache.Pos = Actor->Pos();
 			Actor->StaticLightsTraceCache.Bits = 0;
@@ -112,8 +112,19 @@ public:
 //
 //==========================================================================
 
-void HWDrawInfo::GetDynSpriteLight(AActor *self, float x, float y, float z, FLightNode *node, int portalgroup, float *out)
+
+float inverseSquareAttenuation(float dist, float radius, float strength)
 {
+	float a = dist / radius;
+	float b = clamp(1.0 - a * a * a * a, 0.0, 1.0);
+	return (b * b) / (dist * dist + 1.0) * strength;
+}
+
+void HWDrawInfo::GetDynSpriteLight(AActor *self, float x, float y, float z, FLightNode *node, int portalgroup, float *out, bool fullbright)
+{
+	if (fullbright)
+		return;
+
 	FDynamicLight *light;
 	float frac, lr, lg, lb;
 	float radius;
@@ -158,7 +169,7 @@ void HWDrawInfo::GetDynSpriteLight(AActor *self, float x, float y, float z, FLig
 			dist = (float)L.LengthSquared();
 			radius = light->GetRadius();
 
-			if (dist < radius * radius)
+			if (radius > 0 && dist < radius * radius)
 			{
 				dist = sqrtf(dist);	// only calculate the square root if we really need it.
 
@@ -167,7 +178,14 @@ void HWDrawInfo::GetDynSpriteLight(AActor *self, float x, float y, float z, FLig
 
 				if (staticLight.TraceLightVisbility(node, L, dist))
 				{
-					frac = 1.0f - (dist / radius);
+					if(level.info->lightattenuationmode == ELightAttenuationMode::INVERSE_SQUARE)
+					{
+						frac = (inverseSquareAttenuation(std::max(dist, sqrt(radius) * 2), radius, light->GetStrength()));
+					}
+					else
+					{
+						frac = 1.0f - (dist / radius);
+					}
 
 					if (light->IsSpot())
 					{
@@ -181,11 +199,20 @@ void HWDrawInfo::GetDynSpriteLight(AActor *self, float x, float y, float z, FLig
 						frac *= (float)smoothstep(light->pSpotOuterAngle->Cos(), light->pSpotInnerAngle->Cos(), cosDir);
 					}
 
-					if (frac > 0 && (!light->shadowmapped || (light->GetRadius() > 0 && screen->mShadowMap->ShadowTest(light->Pos, { x, y, z }))))
+					if (frac > 0 && (!light->shadowmapped || (self && light->Trace()) || screen->mShadowMap->ShadowTest(light->Pos, { x, y, z })))
 					{
 						lr = light->GetRed() / 255.0f;
 						lg = light->GetGreen() / 255.0f;
 						lb = light->GetBlue() / 255.0f;
+
+						if (light->target)
+						{
+							float alpha = (float)light->target->Alpha;
+							lr *= alpha;
+							lg *= alpha;
+							lb *= alpha;
+						}
+
 						if (light->IsSubtractive())
 						{
 							float bright = (float)FVector3(lr, lg, lb).Length();
@@ -210,11 +237,11 @@ void HWDrawInfo::GetDynSpriteLight(AActor *thing, particle_t *particle, float *o
 {
 	if (thing != NULL)
 	{
-		GetDynSpriteLight(thing, (float)thing->X(), (float)thing->Y(), (float)thing->Center(), thing->section->lighthead, thing->Sector->PortalGroup, out);
+		GetDynSpriteLight(thing, (float)thing->X(), (float)thing->Y(), (float)thing->Center(), thing->section->lighthead, thing->Sector->PortalGroup, out, (thing->flags5 & MF5_BRIGHT));
 	}
 	else if (particle != NULL)
 	{
-		GetDynSpriteLight(NULL, (float)particle->Pos.X, (float)particle->Pos.Y, (float)particle->Pos.Z, particle->subsector->section->lighthead, particle->subsector->sector->PortalGroup, out);
+		GetDynSpriteLight(NULL, (float)particle->Pos.X, (float)particle->Pos.Y, (float)particle->Pos.Z, particle->subsector->section->lighthead, particle->subsector->sector->PortalGroup, out, (particle->flags & SPF_FULLBRIGHT));
 	}
 }
 
@@ -225,6 +252,9 @@ void hw_GetDynModelLight(HWDrawContext* drawctx, AActor *self, FDynLightData &mo
 
 	if (self)
 	{
+		if ((self->flags5 & MF5_BRIGHT))
+			return;
+
 		auto &addedLights = drawctx->addedLightsArray;
 
 		addedLights.Clear();

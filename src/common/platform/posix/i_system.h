@@ -54,17 +54,6 @@ bool I_WriteIniFailed (const char* filename);
 class FGameTexture;
 bool I_SetCursor(FGameTexture *);
 
-static inline char *strlwr(char *str)
-{
-	char *ptr = str;
-	while(*ptr)
-	{
-		*ptr = tolower(*ptr);
-		++ptr;
-	}
-	return str;
-}
-
 inline int I_GetNumaNodeCount() { return 1; }
 inline int I_GetNumaNodeThreadCount(int numaNode) { return std::max<int>(std::thread::hardware_concurrency(), 1); }
 inline void I_SetThreadNumaNode(std::thread &thread, int numaNode) { }
@@ -74,3 +63,5 @@ bool I_ChDir(const char* path);
 void I_OpenShellFolder(const char*);
 
 #endif
+
+void I_AddMinidumpCallstack(const FString& minidumpFilename, FString& text, FString& logText);

@@ -532,7 +532,7 @@ add_custom_command( OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/sc_man_scanner.h
 
 include_directories( ${CMAKE_CURRENT_BINARY_DIR} )
 
-option( SEND_ANON_STATS "Enable sending of anonymous hardware statistics" ON )
+option( SEND_ANON_STATS "Enable sending of anonymous hardware statistics" OFF )
 
 if( NOT SEND_ANON_STATS )
 	add_definitions( -DNO_SEND_STATS )
@@ -739,6 +739,7 @@ set (VULKAN_SOURCES
 	common/rendering/vulkan/vk_pprenderstate.cpp
 	common/rendering/vulkan/vk_levelmesh.cpp
 	common/rendering/vulkan/vk_lightmapper.cpp
+	common/rendering/vulkan/vk_lightprober.cpp
 	common/rendering/vulkan/commands/vk_commandbuffer.cpp
 	common/rendering/vulkan/buffers/vk_rsbuffers.cpp
 	common/rendering/vulkan/buffers/vk_hwbuffer.cpp
@@ -821,6 +822,7 @@ set (PCH_SOURCES
 	st_stuff.cpp
 	r_data/v_palette.cpp
 	wi_stuff.cpp
+	levelmeshhelper.cpp
 	gamedata/a_keys.cpp
 	gamedata/a_weapons.cpp
 	gamedata/decallib.cpp
@@ -998,6 +1000,7 @@ set (PCH_SOURCES
 	common/textures/multipatchtexturebuilder.cpp
 	common/textures/skyboxtexture.cpp
 	common/textures/animtexture.cpp
+	common/textures/firetexture.cpp
 	common/textures/v_collection.cpp
 	common/textures/formats/automaptexture.cpp
 	common/textures/formats/brightmaptexture.cpp
@@ -1112,7 +1115,6 @@ set (PCH_SOURCES
 	common/rendering/hwrenderer/data/hw_collision.cpp
 	common/rendering/hwrenderer/data/hw_levelmesh.cpp
 	common/rendering/hwrenderer/data/hw_meshbuilder.cpp
-	common/rendering/hwrenderer/data/hw_mesh.cpp
 	common/rendering/hwrenderer/postprocessing/hw_postprocessshader.cpp
 	common/rendering/hwrenderer/postprocessing/hw_postprocess.cpp
 	common/rendering/hwrenderer/postprocessing/hw_postprocess_cvars.cpp
@@ -1318,6 +1320,13 @@ else()
 endif()
 
 if( MSVC )
+	option ( CONSOLE_MODE "Compile as a console application" OFF )
+	if ( CONSOLE_MODE )
+		set ( CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /SUBSYSTEM:CONSOLE" )
+	else()
+		set ( CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /SUBSYSTEM:WINDOWS" )
+	endif()
+
 	option( ZDOOM_GENERATE_MAPFILE "Generate .map file for debugging." OFF )
 	set( LINKERSTUFF "/MANIFEST:NO" )
 

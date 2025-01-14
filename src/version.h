@@ -47,7 +47,6 @@ const char *GetVersionString();
 #define RC_FILEVERSION 0,0,9999,0
 #define RC_PRODUCTVERSION 0,0,9999,0
 #define RC_PRODUCTVERSION2 VERSIONSTR
-
 // These are for content versioning.
 #define VER_MAJOR 1
 #define VER_MINOR 0
@@ -55,7 +54,7 @@ const char *GetVersionString();
 
 // These are for zscript versioning.
 #define ZSCRIPT_VER_MAJOR 4
-#define ZSCRIPT_VER_MINOR 12
+#define ZSCRIPT_VER_MINOR 14
 #define ZSCRIPT_VER_REVISION 0
 
 // This should always refer to the VkDoom version a derived port is based on and not reflect the derived port's version number!
@@ -99,6 +98,7 @@ const char *GetVersionString();
 // This is so that derivates can use the same savegame versions without worrying about engine compatibility
 #define GAMESIG "HANDSOFNECROMANCY2"
 #define BASEWAD "engine-vkdoom.pk3"
+// Set OPTIONALWAD to "" (null) to disable searching for it
 #define OPTIONALWAD "game_support.pk3"
 #define GZDOOM 1
 #define VR3D_ENABLED

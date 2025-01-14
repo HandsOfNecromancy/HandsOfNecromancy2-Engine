@@ -56,6 +56,7 @@
 #include "r_data/r_interpolate.h"
 #include "doom_aabbtree.h"
 #include "doom_levelmesh.h"
+#include "p_visualthinker.h"
 
 //============================================================================
 //
@@ -149,6 +150,7 @@ struct FLevelLocals
 	int GetCompatibility2(int mask);
 	void ApplyCompatibility();
 	void ApplyCompatibility2();
+	AActor* SelectActorFromTID(int tid, size_t index, AActor* defactor);
 
 	void Init();
 
@@ -166,8 +168,8 @@ private:
 
 	void SerializePlayers(FSerializer &arc, bool skipload);
 	void CopyPlayer(player_t *dst, player_t *src, const char *name);
-	void ReadOnePlayer(FSerializer &arc, bool skipload);
-	void ReadMultiplePlayers(FSerializer &arc, int numPlayers, int numPlayersNow, bool skipload);
+	void ReadOnePlayer(FSerializer &arc, bool fromHub);
+	void ReadMultiplePlayers(FSerializer &arc, int numPlayers, bool fromHub);
 	void SerializeSounds(FSerializer &arc);
 	void PlayerSpawnPickClass (int playernum);
 
@@ -198,7 +200,7 @@ public:
 	void ClearDynamic3DFloorData();
 	void WorldDone(void);
 	void AirControlChanged();
-	AActor *SelectTeleDest(int tid, int tag, bool norandom);
+	AActor *SelectTeleDest(int tid, int tag, bool norandom, bool isPlayer);
 	bool AlignFlat(int linenum, int side, int fc);
 	void ReplaceTextures(const char *fromname, const char *toname, int flags);
 
@@ -427,8 +429,6 @@ public:
 		DThinker *thinker = static_cast<DThinker*>(cls->CreateNew());
 		assert(thinker->IsKindOf(RUNTIME_CLASS(DThinker)));
 		thinker->ObjectFlags |= OF_JustSpawned;
-		if (thinker->IsKindOf(RUNTIME_CLASS(DVisualThinker))) // [MC] This absolutely must happen for this class!
-			statnum = STAT_VISUALTHINKER;
 		Thinkers.Link(thinker, statnum);
 		thinker->Level = this;
 		return thinker;
@@ -467,7 +467,7 @@ public:
 
 	// Lightmaps
 	bool lightmaps = false;
-	TArray<DoomLevelMeshSurface*> Surfaces;
+	TArray<int> LightmapTiles;
 	FVector3 SunDirection;
 	FVector3 SunColor;
 	uint16_t LightmapSampleDistance;
@@ -682,6 +682,8 @@ public:
 	bool		HasDynamicLights;		// Another render optimization for maps with no lights at all.
 	int		frozenstate;
 
+	TMap<int, TArray<int>> SecCorrelations; // links sectors to a list of sectors it provides fake height/3d floors for
+
 	double		teamdamage;
 
 	// former OpenGL-exclusive properties that should also be usable by the true color software renderer.
@@ -700,6 +702,7 @@ public:
 	int			ImpactDecalCount;
 
 	FDynamicLight *lights;
+	DVisualThinker* VisualThinkerHead = nullptr;
 
 	// links to global game objects
 	TArray<TObjPtr<AActor *>> CorpseQueue;

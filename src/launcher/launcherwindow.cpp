@@ -11,7 +11,7 @@
 #include <zwidget/window/window.h>
 #include <zwidget/widgets/tabwidget/tabwidget.h>
 
-int LauncherWindow::ExecModal(WadStuff *wads, int numwads, int defaultiwad, int *autoloadflags, FString *extraArgs)
+int LauncherWindow::ExecModal(WadStuff* wads, int numwads, int defaultiwad, int* autoloadflags, FString * extraArgs)
 {
 	Size screenSize = GetScreenSize();
 	double windowWidth = 615.0;

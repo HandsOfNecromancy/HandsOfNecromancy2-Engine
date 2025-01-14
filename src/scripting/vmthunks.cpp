@@ -869,6 +869,34 @@ DEFINE_ACTION_FUNCTION_NATIVE(_Sector, SetXOffset, SetXOffset)
 	 ACTION_RETURN_INT(self->GetLightLevel());
  }
 
+ static void SetPlaneReflectivity(sector_t* self, int pos, double val)
+ {
+	 if (pos < 0 || pos > 1) ThrowAbortException(X_ARRAY_OUT_OF_BOUNDS, "pos must be either 0 or 1");
+	 self->SetPlaneReflectivity(pos, val);
+ }
+
+ DEFINE_ACTION_FUNCTION_NATIVE(_Sector, SetPlaneReflectivity, SetPlaneReflectivity)
+ {
+	 PARAM_SELF_STRUCT_PROLOGUE(sector_t);
+	 PARAM_INT(pos);
+	 PARAM_FLOAT(val)
+	 SetPlaneReflectivity(self, pos, val);
+	 return 0;
+ }
+
+ static double GetPlaneReflectivity(sector_t* self, int pos)
+ {
+	 if (pos < 0 || pos > 1) ThrowAbortException(X_ARRAY_OUT_OF_BOUNDS, "pos must be either 0 or 1");
+	 return self->GetPlaneReflectivity(pos);
+ }
+
+ DEFINE_ACTION_FUNCTION_NATIVE(_Sector, GetPlaneReflectivity, GetPlaneReflectivity)
+ {
+	 PARAM_SELF_STRUCT_PROLOGUE(sector_t);
+	 PARAM_INT(pos);
+	 ACTION_RETURN_FLOAT(GetPlaneReflectivity(self, pos));
+ }
+
  static int PortalBlocksView(sector_t *self, int pos)
  {
 	 return self->PortalBlocksView(pos);
@@ -1806,19 +1834,6 @@ DEFINE_ACTION_FUNCTION_NATIVE(_Secplane, isEqual, isPlaneEqual)
 	ACTION_RETURN_BOOL(*self == *other);
 }
 
-static void ChangeHeight(secplane_t *self, double hdiff)
-{
-	self->ChangeHeight(hdiff);
-}
-
-DEFINE_ACTION_FUNCTION_NATIVE(_Secplane, ChangeHeight, ChangeHeight)
-{
-	PARAM_SELF_STRUCT_PROLOGUE(secplane_t);
-	PARAM_FLOAT(hdiff);
-	self->ChangeHeight(hdiff);
-	return 0;
-}
-
 static double GetChangedHeight(const secplane_t *self, double hdiff)
 {
 	return self->GetChangedHeight(hdiff);
@@ -2263,7 +2278,13 @@ void FormatMapName(FLevelLocals *self, int cr, FString *result)
 	bool ishub = (cluster != nullptr && (cluster->flags & CLUSTER_HUB));
 
 	*result = "";
-	if (am_showmaplabel == 1 || (am_showmaplabel == 2 && !ishub))
+	// If a label is specified, use it uncontitionally here.
+	if (self->info->MapLabel.IsNotEmpty())
+	{
+		if (self->info->MapLabel.Compare("*"))
+			*result << self->info->MapLabel << ": ";
+	}
+	else if (am_showmaplabel == 1 || (am_showmaplabel == 2 && !ishub))
 	{
 		*result << self->MapName << ": ";
 	}
@@ -2768,6 +2789,7 @@ DEFINE_FIELD_X(LevelInfo, level_info_t, Music)
 DEFINE_FIELD_X(LevelInfo, level_info_t, LightningSound)
 DEFINE_FIELD_X(LevelInfo, level_info_t, LevelName)
 DEFINE_FIELD_X(LevelInfo, level_info_t, AuthorName)
+DEFINE_FIELD_X(LevelInfo, level_info_t, MapLabel)
 DEFINE_FIELD_X(LevelInfo, level_info_t, musicorder)
 DEFINE_FIELD_X(LevelInfo, level_info_t, skyspeed1)
 DEFINE_FIELD_X(LevelInfo, level_info_t, skyspeed2)

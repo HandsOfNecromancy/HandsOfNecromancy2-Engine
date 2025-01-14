@@ -52,6 +52,8 @@ DEFINE_FIELD_X(GameInfoStruct, gameinfo_t, backpacktype)
 DEFINE_FIELD_X(GameInfoStruct, gameinfo_t, Armor2Percent)
 DEFINE_FIELD_X(GameInfoStruct, gameinfo_t, ArmorIcon1)
 DEFINE_FIELD_X(GameInfoStruct, gameinfo_t, ArmorIcon2)
+DEFINE_FIELD_X(GameInfoStruct, gameinfo_t, BasicArmorClass)
+DEFINE_FIELD_X(GameInfoStruct, gameinfo_t, HexenArmorClass)
 DEFINE_FIELD_X(GameInfoStruct, gameinfo_t, gametype)
 DEFINE_FIELD_X(GameInfoStruct, gameinfo_t, norandomplayerclass)
 DEFINE_FIELD_X(GameInfoStruct, gameinfo_t, infoPages)
@@ -77,6 +79,10 @@ DEFINE_FIELD_X(GameInfoStruct, gameinfo_t, defaultdropstyle)
 DEFINE_FIELD_X(GameInfoStruct, gameinfo_t, normforwardmove)
 DEFINE_FIELD_X(GameInfoStruct, gameinfo_t, normsidemove)
 DEFINE_FIELD_X(GameInfoStruct, gameinfo_t, mHideParTimes)
+DEFINE_FIELD_X(GameInfoStruct, gameinfo_t, forceEnableLightmaps)
+DEFINE_FIELD_X(GameInfoStruct, gameinfo_t, defaultSunColor)
+DEFINE_FIELD_X(GameInfoStruct, gameinfo_t, defaultSunDirection)
+DEFINE_FIELD_X(GameInfoStruct, gameinfo_t, defaultLightmapSampleDistance)
 
 const char *GameNames[17] =
 {
@@ -205,6 +211,19 @@ const char* GameInfoBorders[] =
 		sc.MustGetToken(','); \
 		sc.MustGetValue(true); \
 		gameinfo.key[1] = sc.Float; \
+	}
+
+#define GAMEINFOKEY_THREEDOUBLES(key, variable) \
+	else if(nextKey.CompareNoCase(variable) == 0) \
+	{ \
+		sc.MustGetValue(true); \
+		gameinfo.key[0] = sc.Float; \
+		sc.MustGetToken(','); \
+		sc.MustGetValue(true); \
+		gameinfo.key[1] = sc.Float; \
+		sc.MustGetToken(','); \
+		sc.MustGetValue(true); \
+		gameinfo.key[2] = sc.Float; \
 	}
 
 #define GAMEINFOKEY_COLOR(key, variable) \
@@ -392,6 +411,8 @@ void FMapInfoParser::ParseGameInfo()
 			GAMEINFOKEY_SOUNDARRAY(PrecachedSounds, "precachesounds", 0, false)
 			GAMEINFOKEY_STRINGARRAY(EventHandlers, "addeventhandlers", 0, false)
 			GAMEINFOKEY_STRINGARRAY(EventHandlers, "eventhandlers", 0, false)
+			GAMEINFOKEY_STRING(BasicArmorClass, "BasicArmorClass")
+			GAMEINFOKEY_STRING(HexenArmorClass, "HexenArmorClass")
 			GAMEINFOKEY_STRING(PauseSign, "pausesign")
 			GAMEINFOKEY_STRING(quitSound, "quitSound")
 			GAMEINFOKEY_STRING(BorderFlat, "borderFlat")
@@ -460,7 +481,9 @@ void FMapInfoParser::ParseGameInfo()
 			GAMEINFOKEY_TWODOUBLES(normsidemove, "normsidemove")
 			GAMEINFOKEY_BOOL(nomergepickupmsg, "nomergepickupmsg")
 			GAMEINFOKEY_BOOL(mHideParTimes, "hidepartimes")
-
+			GAMEINFOKEY_BOOL(forceEnableLightmaps, "forceenablelightmaps")
+			GAMEINFOKEY_THREEDOUBLES(defaultSunColor, "defaultsuncolor")
+			GAMEINFOKEY_THREEDOUBLES(defaultSunDirection, "defaultSunDirection")
 		else
 		{
 			DPrintf(DMSG_ERROR, "Unknown GAMEINFO key \"%s\" found in %s:%i\n", nextKey.GetChars(), sc.ScriptName.GetChars(), sc.Line);

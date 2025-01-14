@@ -148,6 +148,8 @@ struct gameinfo_t
 	FString SkyFlatName;
 	FString ArmorIcon1;
 	FString ArmorIcon2;
+	FName BasicArmorClass;
+	FName HexenArmorClass;
 	FString PauseSign;
 	FString Endoom;
 	double Armor2Percent;
@@ -215,6 +217,10 @@ struct gameinfo_t
 	bool nomergepickupmsg;
 	bool mHideParTimes;
 	CutsceneDef IntroScene;
+	bool forceEnableLightmaps = false;
+	FVector3 defaultSunColor = FVector3(1.f, 1.f, 1.f);
+	FVector3 defaultSunDirection = FVector3(0.45f, 0.3f, 0.9f);
+	int defaultLightmapSampleDistance = 8;
 
 	const char *GetFinalePage(unsigned int num) const;
 };

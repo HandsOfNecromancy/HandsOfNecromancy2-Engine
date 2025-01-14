@@ -52,6 +52,8 @@
 
 #define ALLOW_CROSS_GAME
 
+EXTERN_CVAR(Int, save_sort_order)
+
 //=============================================================================
 //
 // M_ReadSaveStrings
@@ -62,6 +64,14 @@
 
 void FSavegameManager::ReadSaveStrings()
 {
+	// re-read list if forced to sort again
+	static int old_save_sort_order = 0;
+	if (old_save_sort_order != save_sort_order)
+	{
+		ClearSaveGames();
+		old_save_sort_order = save_sort_order;
+	}
+
 	if (SaveGames.Size() == 0)
 	{
 		FString filter;
@@ -93,6 +103,7 @@ void FSavegameManager::ReadSaveStrings()
 						FString engine = arc.GetString("Engine");
 						FString iwad = arc.GetString("Game WAD");
 						FString title = arc.GetString("Title");
+						FString creationtime = arc.GetString("Creation Time");
 
 
 						if (engine.Compare(GAMESIG) != 0 || savever > SAVEVER)
@@ -129,6 +140,7 @@ void FSavegameManager::ReadSaveStrings()
 						node->bOldVersion = oldVer;
 						node->bMissingWads = missing;
 						node->SaveTitle = title;
+						node->CreationTime = creationtime;
 						InsertSaveNode(node);
 					}
 				}

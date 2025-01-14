@@ -89,6 +89,8 @@ extend struct GameInfoStruct
 	native double Armor2Percent;
 	native String ArmorIcon1;
 	native String ArmorIcon2;
+	native Name BasicArmorClass;
+	native Name HexenArmorClass;
 	native bool norandomplayerclass;
 	native Array<Name> infoPages;
 	native GIFont mStatscreenMapNameFont;
@@ -107,6 +109,10 @@ extend struct GameInfoStruct
 	native double normforwardmove[2];
 	native double normsidemove[2];
 	native bool mHideParTimes;
+	native bool forceEnableLightmaps;
+	native FVector3 defaultSunColor;
+	native FVector3 defaultSunDirection;
+	native int defaultLightmapSampleDistance;
 }
 
 extend class Object
@@ -344,6 +350,7 @@ struct LevelInfo native
 	native readonly String LightningSound;
 	native readonly String Music;
 	native readonly String LevelName;
+	native readonly String MapLabel;
 	native readonly String AuthorName;
 	native readonly int musicorder;
 	native readonly float skyspeed1;
@@ -614,6 +621,9 @@ struct TerrainDef native
 	native bool DamageOnLand;
 	native double Friction;
 	native double MoveFactor;
+	native Sound StepSound;
+	native double StepDistance;
+	native double StepDistanceMinVel;
 };
 
 enum EPickStart
@@ -803,3 +813,18 @@ struct FRailParams
 	native int SpiralOffset;
 	native int limit;
 };	// [RH] Shoot a railgun
+
+
+struct Lightmap
+{
+	// Mark all lightmap surfaces for recalculation. The internal lightmapper will gradually recalculate every single lightmap surface in the level.
+	native static void Invalidate();
+
+	// Set direction of the light towards the sun. Angle and pitch matches ZDRayInfo.
+	// Calling this does NOT recalculate the lightmap.
+	native static void SetSunDirection(double ang, double pch);
+
+	// Can go above 1.0 (call Invalidate())
+	// Calling this does NOT recalculate the lightmap.
+	native static void SetSunColor(Vector3 color);
+};

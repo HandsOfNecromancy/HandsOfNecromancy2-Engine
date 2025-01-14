@@ -4,43 +4,83 @@
 
 LevelMesh::LevelMesh()
 {
+	LevelMeshLimits limits;
+	limits.MaxVertices = 12;
+	limits.MaxIndexes = 3 * 4;
+	limits.MaxSurfaces = 1;
+	limits.MaxUniforms = 1;
+	Reset(limits);
+
 	// Default portal
 	LevelMeshPortal portal;
 	Portals.Push(portal);
 
 	AddEmptyMesh();
-	UpdateCollision();
+	CreateCollision();
+}
 
-	Mesh.MaxVertices = std::max(Mesh.Vertices.Size() * 2, (unsigned int)10000);
-	Mesh.MaxIndexes = std::max(Mesh.Indexes.Size() * 2, (unsigned int)10000);
-	Mesh.MaxSurfaces = std::max(Mesh.SurfaceIndexes.Size() * 2, (unsigned int)10000);
-	Mesh.MaxUniforms = std::max(Mesh.Uniforms.Size() * 2, (unsigned int)10000);
-	Mesh.MaxSurfaceIndexes = std::max(Mesh.SurfaceIndexes.Size() * 2, (unsigned int)10000);
-	Mesh.MaxNodes = (int)std::max(Collision->get_nodes().size() * 2, (size_t)10000);
-	Mesh.MaxLights = 100'000;
-	Mesh.MaxLightIndexes = 4 * 1024 * 1024;
+void LevelMesh::CreateCollision()
+{
+	Collision = std::make_unique<CPUAccelStruct>(this);
+}
+
+void LevelMesh::Reset(const LevelMeshLimits& limits)
+{
+	Mesh.Vertices.Resize(limits.MaxVertices);
+	Mesh.UniformIndexes.Resize(limits.MaxVertices);
+
+	Mesh.Surfaces.Resize(limits.MaxSurfaces);
+	Mesh.Uniforms.Resize(limits.MaxUniforms);
+	Mesh.LightUniforms.Resize(limits.MaxUniforms);
+	Mesh.Materials.Resize(limits.MaxUniforms);
+
+	int maxLights = 20'000;
+	int maxDynlights = 50'000;
+
+	Mesh.Lights.Resize(maxLights);
+	Mesh.LightIndexes.Resize(limits.MaxSurfaces * 10);
+	Mesh.DynLights.Resize(maxDynlights * 4);
+
+	Mesh.Indexes.Resize(limits.MaxIndexes);
+	Mesh.SurfaceIndexes.Resize(limits.MaxIndexes / 3 + 1);
+
+	Mesh.DrawIndexes.Resize(limits.MaxIndexes);
+
+	FreeLists.Vertex.Reset(limits.MaxVertices);
+	FreeLists.Index.Reset(limits.MaxIndexes);
+	FreeLists.Uniforms.Reset(limits.MaxUniforms);
+	FreeLists.Surface.Reset(limits.MaxSurfaces);
+	FreeLists.DrawIndex.Reset(limits.MaxIndexes);
+	FreeLists.LightIndex.Reset(limits.MaxSurfaces * 10);
+	FreeLists.Light.Reset(maxLights);
 }
 
 void LevelMesh::AddEmptyMesh()
 {
+	GeometryAllocInfo ginfo = AllocGeometry(12, 3 * 4);
+
 	// Default empty mesh (we can't make it completely empty since vulkan doesn't like that)
 	float minval = -100001.0f;
 	float maxval = -100000.0f;
-	Mesh.Vertices.Push({ minval, minval, minval });
-	Mesh.Vertices.Push({ maxval, minval, minval });
-	Mesh.Vertices.Push({ maxval, maxval, minval });
-	Mesh.Vertices.Push({ minval, minval, minval });
-	Mesh.Vertices.Push({ minval, maxval, minval });
-	Mesh.Vertices.Push({ maxval, maxval, minval });
-	Mesh.Vertices.Push({ minval, minval, maxval });
-	Mesh.Vertices.Push({ maxval, minval, maxval });
-	Mesh.Vertices.Push({ maxval, maxval, maxval });
-	Mesh.Vertices.Push({ minval, minval, maxval });
-	Mesh.Vertices.Push({ minval, maxval, maxval });
-	Mesh.Vertices.Push({ maxval, maxval, maxval });
+	ginfo.Vertices[0] = { minval, minval, minval };
+	ginfo.Vertices[1] = { maxval, minval, minval };
+	ginfo.Vertices[2] = { maxval, maxval, minval };
+	ginfo.Vertices[3] = { minval, minval, minval };
+	ginfo.Vertices[4] = { minval, maxval, minval };
+	ginfo.Vertices[5] = { maxval, maxval, minval };
+	ginfo.Vertices[6] = { minval, minval, maxval };
+	ginfo.Vertices[7] = { maxval, minval, maxval };
+	ginfo.Vertices[8] = { maxval, maxval, maxval };
+	ginfo.Vertices[9] = { minval, minval, maxval };
+	ginfo.Vertices[10] = { minval, maxval, maxval };
+	ginfo.Vertices[11] = { maxval, maxval, maxval };
 
 	for (int i = 0; i < 3 * 4; i++)
-		Mesh.Indexes.Push(i);
+		ginfo.Indexes[i] = i;
+
+	Mesh.IndexCount = ginfo.IndexCount;
+
+	UploadPortals();
 }
 
 LevelMeshSurface* LevelMesh::Trace(const FVector3& start, FVector3 direction, float maxDist)
@@ -55,14 +95,14 @@ LevelMeshSurface* LevelMesh::Trace(const FVector3& start, FVector3 direction, fl
 	{
 		FVector3 end = origin + direction * maxDist;
 
-		TraceHit hit = TriangleMeshShape::find_first_hit(Collision.get(), origin, end);
+		TraceHit hit = Collision->FindFirstHit(origin, end);
 
 		if (hit.triangle < 0)
 		{
 			return nullptr;
 		}
 
-		hitSurface = GetSurface(Mesh.SurfaceIndexes[hit.triangle]);
+		hitSurface = &Mesh.Surfaces[Mesh.SurfaceIndexes[hit.triangle]];
 
 		int portal = hitSurface->PortalIndex;
 		if (!portal)
@@ -89,8 +129,7 @@ LevelMeshSurface* LevelMesh::Trace(const FVector3& start, FVector3 direction, fl
 LevelMeshTileStats LevelMesh::GatherTilePixelStats()
 {
 	LevelMeshTileStats stats;
-	int count = GetSurfaceCount();
-	for (const LightmapTile& tile : LightmapTiles)
+	for (const LightmapTile& tile : Lightmap.Tiles)
 	{
 		auto area = tile.AtlasLocation.Area();
 
@@ -102,185 +141,369 @@ LevelMeshTileStats LevelMesh::GatherTilePixelStats()
 			stats.pixels.dirty += area;
 		}
 	}
-	stats.tiles.total += LightmapTiles.Size();
+	stats.tiles.total += Lightmap.Tiles.Size();
 	return stats;
 }
 
-void LevelMesh::UpdateCollision()
+void LevelMesh::PackStaticLightmapAtlas()
 {
-	Collision = std::make_unique<TriangleMeshShape>(Mesh.Vertices.Data(), Mesh.Vertices.Size(), Mesh.Indexes.Data(), Mesh.Indexes.Size());
-}
+	Lightmap.StaticAtlasPacked = true;
+	Lightmap.DynamicTilesStart = Lightmap.Tiles.Size();
 
-struct LevelMeshPlaneGroup
-{
-	FVector4 plane = FVector4(0, 0, 1, 0);
-	int sectorGroup = 0;
-	std::vector<LevelMeshSurface*> surfaces;
-};
-
-void LevelMesh::BuildTileSurfaceLists()
-{
-	// Plane group surface is to be rendered with
-	TArray<LevelMeshPlaneGroup> PlaneGroups;
-	TArray<int> PlaneGroupIndexes(GetSurfaceCount());
-
-	for (int i = 0, count = GetSurfaceCount(); i < count; i++)
+	for (auto& tile : Lightmap.Tiles)
 	{
-		auto surface = GetSurface(i);
-
-		// Is this surface in the same plane as an existing plane group?
-		int planeGroupIndex = -1;
-
-		for (size_t j = 0; j < PlaneGroups.Size(); j++)
-		{
-			if (surface->SectorGroup == PlaneGroups[j].sectorGroup)
-			{
-				float direction = PlaneGroups[j].plane.XYZ() | surface->Plane.XYZ();
-				if (direction >= 0.999f && direction <= 1.01f)
-				{
-					auto point = (surface->Plane.XYZ() * surface->Plane.W);
-					auto planeDistance = (PlaneGroups[j].plane.XYZ() | point) - PlaneGroups[j].plane.W;
-
-					float dist = std::abs(planeDistance);
-					if (dist <= 0.1f)
-					{
-						planeGroupIndex = (int)j;
-						break;
-					}
-				}
-			}
-		}
-
-		// Surface is in a new plane. Create a plane group for it
-		if (planeGroupIndex == -1)
-		{
-			planeGroupIndex = PlaneGroups.Size();
-
-			LevelMeshPlaneGroup group;
-			group.plane = surface->Plane;
-			group.sectorGroup = surface->SectorGroup;
-			PlaneGroups.Push(group);
-		}
-
-		PlaneGroups[planeGroupIndex].surfaces.push_back(surface);
-		PlaneGroupIndexes.Push(planeGroupIndex);
+		if (tile.NeedsUpdate) // false for tiles loaded from lump
+			tile.SetupTileTransform(Lightmap.TextureSize);
 	}
 
-	for (auto& tile : LightmapTiles)
-		tile.Surfaces.Clear();
-
-	for (int i = 0, count = GetSurfaceCount(); i < count; i++)
-	{
-		LevelMeshSurface* targetSurface = GetSurface(i);
-		if (targetSurface->LightmapTileIndex < 0)
-			continue;
-		LightmapTile* tile = &LightmapTiles[targetSurface->LightmapTileIndex];
-		for (LevelMeshSurface* surface : PlaneGroups[PlaneGroupIndexes[i]].surfaces)
-		{
-			FVector2 minUV = tile->ToUV(surface->Bounds.min);
-			FVector2 maxUV = tile->ToUV(surface->Bounds.max);
-			if (surface != targetSurface && (maxUV.X < 0.0f || maxUV.Y < 0.0f || minUV.X > 1.0f || minUV.Y > 1.0f))
-				continue; // Bounding box not visible
-
-			tile->Surfaces.Push(GetSurfaceIndex(surface));
-		}
-	}
-}
-
-void LevelMesh::SetupTileTransforms()
-{
-	for (auto& tile : LightmapTiles)
-	{
-		tile.SetupTileTransform(LMTextureSize);
-	}
-}
-
-void LevelMesh::PackLightmapAtlas(int lightmapStartIndex)
-{
 	std::vector<LightmapTile*> sortedTiles;
-	sortedTiles.reserve(LightmapTiles.Size());
-
-	for (auto& tile : LightmapTiles)
-	{
+	sortedTiles.reserve(Lightmap.Tiles.Size());
+	for (auto& tile : Lightmap.Tiles)
 		sortedTiles.push_back(&tile);
-	}
 
 	std::sort(sortedTiles.begin(), sortedTiles.end(), [](LightmapTile* a, LightmapTile* b) { return a->AtlasLocation.Height != b->AtlasLocation.Height ? a->AtlasLocation.Height > b->AtlasLocation.Height : a->AtlasLocation.Width > b->AtlasLocation.Width; });
 
 	// We do not need to add spacing here as this is already built into the tile size itself.
-	RectPacker packer(LMTextureSize, LMTextureSize, RectPacker::Spacing(0), RectPacker::Padding(0));
+	RectPacker packer(Lightmap.TextureSize, Lightmap.TextureSize, RectPacker::Spacing(0), RectPacker::Padding(0));
 
 	for (LightmapTile* tile : sortedTiles)
 	{
 		auto result = packer.insert(tile->AtlasLocation.Width, tile->AtlasLocation.Height);
 		tile->AtlasLocation.X = result.pos.x;
 		tile->AtlasLocation.Y = result.pos.y;
-		tile->AtlasLocation.ArrayIndex = lightmapStartIndex + (int)result.pageIndex;
+		tile->AtlasLocation.ArrayIndex = (int)result.pageIndex;
 	}
 
-	LMTextureCount = (int)packer.getNumPages();
+	Lightmap.TextureCount = (int)packer.getNumPages();
 
 	// Calculate final texture coordinates
-	for (int i = 0, count = GetSurfaceCount(); i < count; i++)
+	for (int i = 0, count = Mesh.Surfaces.Size(); i < count; i++)
 	{
-		auto surface = GetSurface(i);
+		auto surface = &Mesh.Surfaces[i];
 		if (surface->LightmapTileIndex >= 0)
 		{
-			const LightmapTile& tile = LightmapTiles[surface->LightmapTileIndex];
+			const LightmapTile& tile = Lightmap.Tiles[surface->LightmapTileIndex];
 			for (int i = 0; i < surface->MeshLocation.NumVerts; i++)
 			{
 				auto& vertex = Mesh.Vertices[surface->MeshLocation.StartVertIndex + i];
-				FVector2 uv = tile.ToUV(vertex.fPos(), (float)LMTextureSize);
+				FVector2 uv = tile.ToUV(vertex.fPos(), (float)Lightmap.TextureSize);
 				vertex.lu = uv.X;
 				vertex.lv = uv.Y;
 				vertex.lindex = (float)tile.AtlasLocation.ArrayIndex;
 			}
 		}
 	}
+}
 
-#if 0 // Debug atlas tile locations:
-	float colors[30] =
+void LevelMesh::ClearDynamicLightmapAtlas()
+{
+	for (int surfIndex : Lightmap.DynamicSurfaces)
 	{
-		1.0f, 0.0f, 0.0f,
-		0.0f, 1.0f, 0.0f,
-		1.0f, 1.0f, 0.0f,
-		0.0f, 1.0f, 1.0f,
-		1.0f, 0.0f, 1.0f,
-		0.5f, 0.0f, 0.0f,
-		0.0f, 0.5f, 0.0f,
-		0.5f, 0.5f, 0.0f,
-		0.0f, 0.5f, 0.5f,
-		0.5f, 0.0f, 0.5f
-	};
-	LMTextureData.Resize(LMTextureSize * LMTextureSize * LMTextureCount * 3);
-	uint16_t* pixels = LMTextureData.Data();
-	for (LightmapTile& tile : LightmapTiles)
+		Mesh.Surfaces[surfIndex].LightmapTileIndex = -1;
+	}
+	Lightmap.DynamicSurfaces.Clear();
+	Lightmap.Tiles.Resize(Lightmap.DynamicTilesStart);
+}
+
+void LevelMesh::PackDynamicLightmapAtlas()
+{
+	std::vector<LightmapTile*> sortedTiles;
+	sortedTiles.reserve(Lightmap.Tiles.Size() - Lightmap.DynamicTilesStart);
+
+	for (unsigned int i = Lightmap.DynamicTilesStart; i < Lightmap.Tiles.Size(); i++)
 	{
-		tile.NeedsUpdate = false;
+		Lightmap.Tiles[i].SetupTileTransform(Lightmap.TextureSize);
+		sortedTiles.push_back(&Lightmap.Tiles[i]);
+	}
 
-		int index = tile.Binding.TypeIndex;
-		float* color = colors + (index % 10) * 3;
+	std::sort(sortedTiles.begin(), sortedTiles.end(), [](LightmapTile* a, LightmapTile* b) { return a->AtlasLocation.Height != b->AtlasLocation.Height ? a->AtlasLocation.Height > b->AtlasLocation.Height : a->AtlasLocation.Width > b->AtlasLocation.Width; });
 
-		int x = tile.AtlasLocation.X;
-		int y = tile.AtlasLocation.Y;
-		int w = tile.AtlasLocation.Width;
-		int h = tile.AtlasLocation.Height;
-		for (int yy = y; yy < y + h; yy++)
+	// We do not need to add spacing here as this is already built into the tile size itself.
+	RectPacker packer(Lightmap.TextureSize, Lightmap.TextureSize, RectPacker::Spacing(0), RectPacker::Padding(0));
+
+	for (LightmapTile* tile : sortedTiles)
+	{
+		auto result = packer.insert(tile->AtlasLocation.Width, tile->AtlasLocation.Height);
+		tile->AtlasLocation.X = result.pos.x;
+		tile->AtlasLocation.Y = result.pos.y;
+		tile->AtlasLocation.ArrayIndex = Lightmap.TextureCount; // (int)result.pageIndex;
+	}
+
+	for (int surfIndex : Lightmap.DynamicSurfaces)
+	{
+		auto surface = &Mesh.Surfaces[surfIndex];
+		if (surface->LightmapTileIndex >= 0)
 		{
-			uint16_t* line = pixels + tile.AtlasLocation.ArrayIndex * LMTextureSize * LMTextureSize + yy * LMTextureSize * 3;
-			for (int xx = x; xx < x + w; xx++)
+			const LightmapTile& tile = Lightmap.Tiles[surface->LightmapTileIndex];
+			for (int i = 0; i < surface->MeshLocation.NumVerts; i++)
 			{
-				float gray = (yy - y) / (float)h;
-				line[xx * 3] = floatToHalf(color[0] * gray);
-				line[xx * 3 + 1] = floatToHalf(color[1] * gray);
-				line[xx * 3 + 2] = floatToHalf(color[2] * gray);
+				auto& vertex = Mesh.Vertices[surface->MeshLocation.StartVertIndex + i];
+				FVector2 uv = tile.ToUV(vertex.fPos(), (float)Lightmap.TextureSize);
+				vertex.lu = uv.X;
+				vertex.lv = uv.Y;
+				vertex.lindex = (float)tile.AtlasLocation.ArrayIndex;
 			}
 		}
 	}
-	for (int i = 0, count = GetSurfaceCount(); i < count; i++)
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+void MeshBufferAllocator::Reset(int size)
+{
+	TotalSize = size;
+	Unused.Clear();
+	Unused.Push({ 0, size });
+}
+
+int MeshBufferAllocator::GetTotalSize() const
+{
+	return TotalSize;
+}
+
+int MeshBufferAllocator::GetUsedSize() const
+{
+	int used = TotalSize;
+	for (auto& range : Unused)
 	{
-		auto surface = GetSurface(i);
-		surface->AlwaysUpdate = false;
+		int count = range.End - range.Start;
+		used -= count;
 	}
-#endif
+	return used;
+}
+
+int MeshBufferAllocator::Alloc(int count)
+{
+	for (unsigned int i = 0, size = Unused.Size(); i < size; i++)
+	{
+		auto& item = Unused[i];
+		if (item.End - item.Start >= count)
+		{
+			int pos = item.Start;
+			item.Start += count;
+			if (item.Start == item.End)
+			{
+				Unused.Delete(i);
+			}
+			return pos;
+		}
+	}
+
+	I_FatalError("Could not find space in level mesh buffer");
+}
+
+void MeshBufferAllocator::Free(int position, int count)
+{
+	if (count <= 0)
+		return;
+
+	MeshBufferRange range = { position, position + count };
+
+	// First element?
+	if (Unused.Size() == 0)
+	{
+		Unused.push_back(range);
+		return;
+	}
+
+	// Find start position in ranges
+	auto right = std::lower_bound(Unused.begin(), Unused.end(), range, [](const auto& a, const auto& b) { return a.Start < b.Start; });
+	bool leftExists = right != Unused.begin();
+	bool rightExists = right != Unused.end();
+	auto left = right;
+	if (leftExists)
+		--left;
+
+	// Is this a gap between two ranges?
+	if ((!leftExists || left->End < range.Start) && (!rightExists || right->Start > range.End))
+	{
+		Unused.Insert(right - Unused.begin(), range);
+		return;
+	}
+
+	// Are we extending the left or the right range?
+	if (leftExists && range.Start <= left->End)
+	{
+		left->End = std::max(left->End, range.End);
+		right = left;
+	}
+	else // if (rightExists && right->Start <= range.End)
+	{
+		right->Start = range.Start;
+		right->End = std::max(right->End, range.End);
+		left = right;
+	}
+
+	// Merge overlaps to the right
+	while (true)
+	{
+		++right;
+		if (right == Unused.end() || right->Start > range.End)
+			break;
+		left->End = std::max(right->End, range.End);
+	}
+
+	// Remove ranges now covered by the extended range
+	//Unused.erase(++left, right);
+	++left;
+	auto leftPos = left - Unused.begin();
+	auto rightPos = right - Unused.begin();
+	Unused.Delete(leftPos, rightPos - leftPos);
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+void MeshBufferUploads::Clear()
+{
+	Ranges.Clear();
+}
+
+void MeshBufferUploads::Add(int position, int count)
+{
+	if (count <= 0)
+		return;
+
+	MeshBufferRange range = { position, position + count };
+
+	// First element?
+	if (Ranges.Size() == 0)
+	{
+		Ranges.push_back(range);
+		return;
+	}
+
+	// Find start position in ranges
+	auto right = std::lower_bound(Ranges.begin(), Ranges.end(), range, [](const auto& a, const auto& b) { return a.Start < b.Start; });
+	bool leftExists = right != Ranges.begin();
+	bool rightExists = right != Ranges.end();
+	auto left = right;
+	if (leftExists)
+		--left;
+
+	// Is this a gap between two ranges?
+	if ((!leftExists || left->End < range.Start) && (!rightExists || right->Start > range.End))
+	{
+		Ranges.Insert(right - Ranges.begin(), range);
+		return;
+	}
+
+	// Are we extending the left or the right range?
+	if (leftExists && range.Start <= left->End)
+	{
+		left->End = std::max(left->End, range.End);
+		right = left;
+	}
+	else // if (rightExists && right->Start <= range.End)
+	{
+		right->Start = range.Start;
+		right->End = std::max(right->End, range.End);
+		left = right;
+	}
+
+	// Merge overlaps to the right
+	while (true)
+	{
+		++right;
+		if (right == Ranges.end() || right->Start > range.End)
+			break;
+		left->End = std::max(right->End, range.End);
+	}
+
+	// Remove ranges now covered by the extended range
+	//ranges.erase(++left, right);
+	++left;
+	auto leftPos = left - Ranges.begin();
+	auto rightPos = right - Ranges.begin();
+	Ranges.Delete(leftPos, rightPos - leftPos);
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+void LevelMeshDrawList::Add(int position, int count)
+{
+	if (count <= 0)
+		return;
+
+	MeshBufferRange range = { position, position + count };
+
+	// First element?
+	if (Ranges.Size() == 0)
+	{
+		Ranges.push_back(range);
+		return;
+	}
+
+	// Find start position in ranges
+	auto right = std::lower_bound(Ranges.begin(), Ranges.end(), range, [](const auto& a, const auto& b) { return a.Start < b.Start; });
+	bool leftExists = right != Ranges.begin();
+	bool rightExists = right != Ranges.end();
+	auto left = right;
+	if (leftExists)
+		--left;
+
+	// Is this a gap between two ranges?
+	if ((!leftExists || left->End < range.Start) && (!rightExists || right->Start > range.End))
+	{
+		Ranges.Insert(right - Ranges.begin(), range);
+		return;
+	}
+
+	// Are we extending the left or the right range?
+	if (leftExists && range.Start <= left->End)
+	{
+		left->End = std::max(left->End, range.End);
+		right = left;
+	}
+	else // if (rightExists && right->Start <= range.End)
+	{
+		right->Start = range.Start;
+		right->End = std::max(right->End, range.End);
+		left = right;
+	}
+
+	// Merge overlaps to the right
+	while (true)
+	{
+		++right;
+		if (right == Ranges.end() || right->Start > range.End)
+			break;
+		left->End = std::max(right->End, range.End);
+	}
+
+	// Remove ranges now covered by the extended range
+	//ranges.erase(++left, right);
+	++left;
+	auto leftPos = left - Ranges.begin();
+	auto rightPos = right - Ranges.begin();
+	Ranges.Delete(leftPos, rightPos - leftPos);
+}
+
+void LevelMeshDrawList::Remove(int position, int count)
+{
+	if (count <= 0)
+		return;
+
+	MeshBufferRange range = { position, position + count };
+
+	auto entry = std::lower_bound(Ranges.begin(), Ranges.end(), range, [](const auto& a, const auto& b) { return a.End < b.End; });
+	if (entry->Start == range.Start && entry->End == range.End)
+	{
+		Ranges.Delete(entry - Ranges.begin());
+	}
+	else if (entry->Start == range.Start)
+	{
+		entry->Start = range.End;
+	}
+	else if (entry->End == range.End)
+	{
+		entry->End = range.Start;
+	}
+	else
+	{
+		MeshBufferRange split;
+		split.Start = entry->Start;
+		split.End = range.Start;
+		entry->Start = range.End;
+		Ranges.Insert(entry - Ranges.begin(), split);
+	}
 }

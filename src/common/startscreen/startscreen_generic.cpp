@@ -38,6 +38,9 @@
 #include "startupinfo.h"
 #include "image.h"
 #include "texturemanager.h"
+#include "v_video.h"
+#include "v_draw.h"
+#include "s_music.h"
 
 // Hexen startup screen
 #define ST_PROGRESS_X			64			// Start of notches x screen pos.
@@ -76,18 +79,24 @@ FGenericStartScreen::FGenericStartScreen(int max_progress)
 
 	StartupBitmap.Create(640 * 2, 480 * 2);
 	ClearBlock(StartupBitmap, { 0, 0, 0, 255 }, 0, 0, 640 * 2, 480 * 2);
-	// This also needs to work if the lump turns out to be unusable.
-	if (startup_lump != -1)
+
+	AddImage("BOOTLOGO", [](FGameTexture* tex) {
+		double scrwidth = screen->GetWidth();
+		double scrheight = screen->GetHeight();
+		double scale = scrheight / 2160.0;
+		double imgwidth = tex->GetDisplayWidth() * scale;
+		double imgheight = tex->GetDisplayHeight() * scale;
+		double imgx = (scrwidth - imgwidth) * 0.5;
+		double imgy = (scrheight - imgheight) * 0.5;
+
+		DrawTexture(twod, tex, imgx, imgy, DTA_DestWidthF, imgwidth, DTA_DestHeightF, imgheight, DTA_VirtualWidthF, scrwidth, DTA_VirtualHeightF, scrheight, DTA_KeepRatio, true, TAG_END);
+		});
+
+	if (!batchrun)
 	{
-		auto iBackground = FImageSource::GetImage(startup_lump, false);
-		if (iBackground)
+		if (GameStartupInfo.Song.IsNotEmpty())
 		{
-			Background = iBackground->GetCachedBitmap(nullptr, FImageSource::normal);
-			if (Background.GetWidth() < 640 * 2 || Background.GetHeight() < 480 * 2)
-				StartupBitmap.Blit(320 * 2 - Background.GetWidth()/2, 220 * 2 - Background.GetHeight() / 2, Background);
-			else
-				StartupBitmap.Blit(0, 0, Background, 640 * 2, 480 * 2);
-		
+			S_ChangeMusic(GameStartupInfo.Song.GetChars(), true, true);
 		}
 	}
 }
