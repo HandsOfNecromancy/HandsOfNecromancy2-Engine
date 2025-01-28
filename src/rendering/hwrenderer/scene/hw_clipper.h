@@ -28,10 +28,11 @@ class Clipper
 	ClipNode * clipnodes = nullptr;
 	ClipNode * cliphead = nullptr;
 	ClipNode * silhouette = nullptr;	// will be preserved even when RemoveClipRange is called
-    const FRenderViewpoint *viewpoint = nullptr;
+	FRenderViewpoint *viewpoint = nullptr;
 	bool blocked = false;
 
 	static angle_t AngleToPseudo(angle_t ang);
+	static angle_t PitchToPseudo(double ang);
 	bool IsRangeVisible(angle_t startangle, angle_t endangle);
 	void RemoveRange(ClipNode * cn);
 	void AddClipRange(angle_t startangle, angle_t endangle);
@@ -39,6 +40,9 @@ class Clipper
 	void DoRemoveClipRange(angle_t start, angle_t end);
 
 public:
+
+	bool amRadar = false;
+	
 
 	void Clear();
 
@@ -69,7 +73,7 @@ public:
 		return c;
 	}
     
-    void SetViewpoint(const FRenderViewpoint &vp)
+    void SetViewpoint(FRenderViewpoint &vp)
     {
         viewpoint = &vp;
     }
@@ -113,6 +117,10 @@ public:
 		SafeAddClipRange(AngleToPseudo(startangle), AngleToPseudo(endangle));
 	}
 
+	void SafeAddClipRangeDegPitches(double startpitch, double endpitch)
+	{
+		SafeAddClipRange(PitchToPseudo(startpitch), PitchToPseudo(endpitch));
+	}
 
 	void SafeRemoveClipRange(angle_t startangle, angle_t endangle)
 	{
@@ -143,10 +151,14 @@ public:
 	{
 		return blocked;
 	}
-    
-    angle_t PointToPseudoAngle(double x, double y);
+
+	angle_t PointToPseudoAngle(double x, double y);
+	angle_t PointToPseudoPitch(double x, double y, double z);
+	angle_t PointToPseudoOrthoAngle(double x, double y);
+	angle_t PointToPseudoOrthoPitch(double x, double y, double z);
 
 	bool CheckBox(const float *bspcoord);
+	bool CheckBoxOrthoPitch(const float *bspcoord);
 
 	// Used to speed up angle calculations during clipping
 	inline angle_t GetClipAngle(vertex_t *v)

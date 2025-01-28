@@ -33,6 +33,7 @@ enum ERenderEffect
 	EFF_STENCIL,
 	EFF_PORTAL,
 
+	EFF_DITHERTRANS,
 	MAX_EFFECTS
 };
 

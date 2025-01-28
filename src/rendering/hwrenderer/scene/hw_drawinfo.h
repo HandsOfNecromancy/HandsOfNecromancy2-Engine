@@ -147,6 +147,8 @@ struct HWDrawInfo
 	HWPortal *mClipPortal;
 	HWPortal *mCurrentPortal;
 	Clipper *mClipper;
+	Clipper *vClipper; // Vertical clipper
+	Clipper *rClipper; // Radar clipper
 	FRenderViewpoint Viewpoint;
 	HWViewpointUniforms VPUniforms;	// per-viewpoint uniform state
 	TArray<HWPortal *> Portals;

@@ -611,9 +611,8 @@ void HWDrawInfo::RenderParticles(subsector_t *sub, sector_t *front, FRenderState
 			if (clipres == PClip_InFront) continue;
 		}
 		
-		assert(sp->spr);
-
-		sp->spr->ProcessParticle(this, state, &sp->PT, front, sp);
+		HWSprite sprite;
+		sprite.ProcessParticle(this, state, &sp->PT, front, sp);
 	}
 	for (int i = Level->ParticlesInSubsec[sub->Index()]; i != NO_PARTICLE; i = Level->Particles[i].snext)
 	{

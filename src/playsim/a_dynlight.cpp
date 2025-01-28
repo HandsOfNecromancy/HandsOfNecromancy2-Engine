@@ -67,7 +67,7 @@
 
 static FMemArena DynLightArena(sizeof(FDynamicLight) * 200);
 static TArray<FDynamicLight*> FreeList;
-static FRandom randLight;
+static FCRandom randLight;
 
 extern TArray<FLightDefaults *> StateLights;
 
@@ -256,7 +256,7 @@ void FDynamicLight::Tick()
 
 	if (owned)
 	{
-		if (!target->state)
+		if (!target->state || !target->ShouldRenderLocally())
 		{
 			Deactivate();
 			return;

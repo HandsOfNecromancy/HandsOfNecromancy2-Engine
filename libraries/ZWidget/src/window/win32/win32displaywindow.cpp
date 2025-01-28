@@ -28,6 +28,26 @@
 #define RIDEV_INPUTSINK	(0x100)
 #endif
 
+#ifdef MINGW
+// MinGW's library doesn't contain a thunk for DwmDefWindowProc, so we need to create our own
+
+BOOL DwmDefWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam, LRESULT *plResult )
+{
+	typedef BOOL(* dwmdwp)(HWND, UINT, WPARAM, LPARAM, LRESULT* );
+	BOOL result(FALSE);
+	HMODULE module = LoadLibrary( _T( "dwmapi.dll" ) );
+	if( module ) {
+		dwmdwp proc = reinterpret_cast<dwmdwp>( GetProcAddress( module, "DwmDefWindowProc" ) );
+		if( proc ) {
+			result = proc( hWnd, msg, wParam, lParam, plResult );
+		}
+		FreeLibrary(module);
+	}
+	return result;
+}
+
+#endif
+
 static std::string from_utf16(const std::wstring& str)
 {
 	if (str.empty()) return {};
@@ -61,7 +81,7 @@ Win32DisplayWindow::Win32DisplayWindow(DisplayWindowHost* windowHost, bool popup
 	Windows.push_front(this);
 	WindowsIterator = Windows.begin();
 
-	WNDCLASSEX classdesc = {};
+	WNDCLASSEXW classdesc = {};
 	classdesc.cbSize = sizeof(WNDCLASSEX);
 	classdesc.hInstance = GetModuleHandle(0);
 	classdesc.style = CS_VREDRAW | CS_HREDRAW | CS_DBLCLKS;
@@ -402,6 +422,7 @@ void Win32DisplayWindow::PresentBitmap(int width, int height, const uint32_t* pi
 LRESULT Win32DisplayWindow::OnWindowMessage(UINT msg, WPARAM wparam, LPARAM lparam)
 {
 	LPARAM result = 0;
+
 	if (DwmDefWindowProc(WindowHandle, msg, wparam, lparam, &result))
 		return result;
 

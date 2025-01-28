@@ -792,10 +792,6 @@ public:
 				th->friendlyseeblocks = CheckInt(key);
 				break;
 
-			case NAME_SourceRadius:
-				th->SourceRadius = (float)CheckFloat(key);
-				break;
-
 			case NAME_lm_suncolor:
 				CHECK_N(Zd | Zdt)
 				if (CheckInt(key) < 0 || CheckInt(key) > 0xFFFFFF)
@@ -868,7 +864,6 @@ public:
 			memset(th->args, 0, sizeof (th->args));
 		}
 
-#if 0
 		if (th->EdNum == 9890) // ZDRAY INFO thing
 		{
 			FAngle angle = FAngle::fromDeg(float(th->angle));
@@ -878,7 +873,6 @@ public:
 			Level->SunDirection = -FVector3 { pc * angle.Cos(), pc * angle.Sin(), -pitch.Sin() }; // [RaveYard]: is there a dedicated function for this?
 			Level->lightmaps = true;
 		}
-#endif
 	}
 
 	//===========================================================================
